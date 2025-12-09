@@ -23,12 +23,9 @@ func main() {
 	}
 	defer mongoService.Close()
 
-	// Initialize Gemini service
-	geminiService, err := services.NewGeminiService(cfg.GeminiAPIKey, cfg.GeminiModel)
-	if err != nil {
-		log.Fatalf("Failed to initialize Gemini service: %v", err)
-	}
-	defer geminiService.Close()
+	// Initialize AI service
+	aiService := services.NewAIService()
+	defer aiService.Close()
 
 	// Initialize Firebase service (optional)
 	var firebaseService *services.FirebaseService
@@ -45,10 +42,13 @@ func main() {
 	}
 
 	// Initialize Line webhook handler
-	lineWebhook, err := handlers.NewLineWebhookHandler(cfg.LineChannelSecret, cfg.LineChannelAccessToken, geminiService, mongoService, firebaseService)
+	lineWebhook, err := handlers.NewLineWebhookHandler(cfg.LineChannelSecret, cfg.LineChannelAccessToken, aiService, mongoService, firebaseService)
 	if err != nil {
 		log.Fatalf("Failed to initialize Line webhook handler: %v", err)
 	}
+
+	// Initialize Proxy Handler
+	proxyHandler := handlers.NewProxyHandler()
 
 	// Setup Gin
 	if cfg.GinMode == "release" {
@@ -63,6 +63,9 @@ func main() {
 
 	// Line webhook
 	r.POST("/webhook/line", lineWebhook.HandleWebhook)
+
+	// AI API Proxy
+	r.POST("/api/chat", proxyHandler.HandleChat)
 
 	// Start server
 	log.Printf("Starting Satisatang server on port %s", cfg.Port)

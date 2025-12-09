@@ -19,13 +19,13 @@ type LineWebhookHandler struct {
 	channelSecret string
 	bot           *messaging_api.MessagingApiAPI
 	blobAPI       *messaging_api.MessagingApiBlobAPI
-	gemini        *services.GeminiService
+	ai            services.AIChat
 	mongo         *services.MongoDBService
 	export        *services.ExportService
 	firebase      *services.FirebaseService
 }
 
-func NewLineWebhookHandler(channelSecret, channelToken string, gemini *services.GeminiService, mongo *services.MongoDBService, firebase *services.FirebaseService) (*LineWebhookHandler, error) {
+func NewLineWebhookHandler(channelSecret, channelToken string, ai services.AIChat, mongo *services.MongoDBService, firebase *services.FirebaseService) (*LineWebhookHandler, error) {
 	bot, err := messaging_api.NewMessagingApiAPI(channelToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Line bot: %w", err)
@@ -40,7 +40,7 @@ func NewLineWebhookHandler(channelSecret, channelToken string, gemini *services.
 		channelSecret: channelSecret,
 		bot:           bot,
 		blobAPI:       blobAPI,
-		gemini:        gemini,
+		ai:            ai,
 		mongo:         mongo,
 		export:        services.NewExportService(mongo),
 		firebase:      firebase,
@@ -119,7 +119,7 @@ func (h *LineWebhookHandler) handleImageMessage(ctx context.Context, source webh
 		imageFormat = contentType[6:]
 	}
 
-	transactionData, err := h.gemini.ProcessReceiptImage(context.Background(), content.Body, imageFormat)
+	transactionData, err := h.ai.ProcessReceiptImage(context.Background(), content.Body, imageFormat)
 	if err != nil {
 		log.Printf("Failed to process image with Gemini: %v", err)
 		// replyToken already used, must use push
@@ -209,7 +209,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 
 		log.Printf("Calling Gemini AI with message: %s", message.Text)
 
-		response, err := h.gemini.ChatWithContext(bgCtx, message.Text, fullContext, chatHistory)
+		response, err := h.ai.ChatWithContext(bgCtx, message.Text, fullContext, chatHistory)
 		if err != nil {
 			log.Printf("Failed to chat with Gemini: %v", err)
 			// Use replyToken for quick error response (free, no quota)
