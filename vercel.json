@@ -1,0 +1,27 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "api/**/*.go",
+            "use": "@vercel/go",
+            "config": {
+                "includeFiles": "fonts/**"
+            }
+        }
+    ],
+    "routes": [
+        {
+            "src": "/health",
+            "dest": "/api/health.go"
+        },
+        {
+            "src": "/webhook/line",
+            "dest": "/api/webhook/line.go"
+        }
+    ],
+    "env": {
+        "GIN_MODE": "release",
+        "GEMINI_MODEL": "gemini-2.5-flash-lite",
+        "MONGODB_ATLAS_DBNAME": "satistang"
+    }
+}

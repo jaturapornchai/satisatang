@@ -36,3 +36,4 @@ tmp/
 *.bak
 satisatang
 backend
+.vercel

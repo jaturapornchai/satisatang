@@ -16,6 +16,13 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Initialize MongoDB service
+	mongoService, err := services.NewMongoDBService(cfg.MongoDBURI, cfg.MongoDBName)
+	if err != nil {
+		log.Fatalf("Failed to initialize MongoDB service: %v", err)
+	}
+	defer mongoService.Close()
+
 	// Initialize Gemini service
 	geminiService, err := services.NewGeminiService(cfg.GeminiAPIKey, cfg.GeminiModel)
 	if err != nil {
@@ -23,8 +30,22 @@ func main() {
 	}
 	defer geminiService.Close()
 
+	// Initialize Firebase service (optional)
+	var firebaseService *services.FirebaseService
+	if cfg.HasFirebase() {
+		firebaseService, err = services.NewFirebaseService(cfg.FirebaseCredentials, cfg.FirebaseStorageBucket)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize Firebase service: %v", err)
+			log.Println("File upload feature will be disabled")
+		} else {
+			defer firebaseService.Close()
+		}
+	} else {
+		log.Println("Firebase not configured - file upload feature disabled")
+	}
+
 	// Initialize Line webhook handler
-	lineWebhook, err := handlers.NewLineWebhookHandler(cfg.LineChannelSecret, cfg.LineChannelAccessToken, geminiService)
+	lineWebhook, err := handlers.NewLineWebhookHandler(cfg.LineChannelSecret, cfg.LineChannelAccessToken, geminiService, mongoService, firebaseService)
 	if err != nil {
 		log.Fatalf("Failed to initialize Line webhook handler: %v", err)
 	}

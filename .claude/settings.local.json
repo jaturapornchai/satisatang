@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(go build:*)",
+      "Bash(go get:*)",
+      "Bash(go run:*)",
+      "Bash(./satisatang.exe)",
+      "Bash(go mod tidy:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd.exe //c \"taskkill /F /PID 37976\")",
+      "Bash(cmd.exe //c \"taskkill /F /PID 39028\")",
+      "Bash(curl:*)",
+      "Bash(cmd.exe //c \"taskkill /F /PID 36636\")",
+      "Bash(npx vercel:*)",
+      "Bash(vercel env:*)",
+      "Bash(printf:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -19,6 +19,18 @@ type Config struct {
 	// Gemini AI
 	GeminiAPIKey string
 	GeminiModel  string
+
+	// MongoDB Atlas
+	MongoDBURI  string
+	MongoDBName string
+
+	// Firebase Cloud Storage (optional)
+	FirebaseCredentials   string // JSON string of service account credentials
+	FirebaseStorageBucket string
+}
+
+func (c *Config) HasFirebase() bool {
+	return c.FirebaseCredentials != "" && c.FirebaseStorageBucket != ""
 }
 
 func Load() (*Config, error) {
@@ -32,6 +44,10 @@ func Load() (*Config, error) {
 		LineChannelAccessToken: getEnv("LINE_CHANNEL_ACCESS_TOKEN", ""),
 		GeminiAPIKey:           getEnv("GEMINI_API_KEY", ""),
 		GeminiModel:            getEnv("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+		MongoDBURI:             getEnv("MONGODB_ATLAS_URI", ""),
+		MongoDBName:            getEnv("MONGODB_ATLAS_DBNAME", "satistang"),
+		FirebaseCredentials:    getEnv("FIREBASE_CREDENTIALS", ""),
+		FirebaseStorageBucket:  getEnv("FIREBASE_STORAGE_BUCKET", ""),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -50,6 +66,9 @@ func (c *Config) Validate() error {
 	}
 	if c.GeminiAPIKey == "" {
 		return fmt.Errorf("GEMINI_API_KEY is required")
+	}
+	if c.MongoDBURI == "" {
+		return fmt.Errorf("MONGODB_ATLAS_URI is required")
 	}
 	return nil
 }
