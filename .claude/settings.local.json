@@ -16,7 +16,8 @@
       "Bash(cmd.exe //c \"taskkill /F /PID 36636\")",
       "Bash(npx vercel:*)",
       "Bash(vercel env:*)",
-      "Bash(printf:*)"
+      "Bash(printf:*)",
+      "Bash(git -C \"c:\\git\\satisatang\" status)"
     ],
     "deny": [],
     "ask": []

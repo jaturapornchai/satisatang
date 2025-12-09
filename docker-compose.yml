@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  satisatang:
+    image: ghcr.io/jaturapornchai/satisatang:sha-c0d0b8a
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
