@@ -75,20 +75,21 @@ func (h *LineWebhookHandler) HandleWebhook(c *gin.Context) {
 
 func (h *LineWebhookHandler) handleMessage(ctx context.Context, event webhook.MessageEvent) {
 	log.Printf("Message type: %T", event.Message)
-	
+	replyToken := event.ReplyToken
+
 	switch message := event.Message.(type) {
 	case webhook.ImageMessageContent:
 		log.Printf("Processing image message")
-		h.handleImageMessage(ctx, event.Source, message)
+		h.handleImageMessage(ctx, event.Source, message, replyToken)
 	case webhook.TextMessageContent:
 		log.Printf("Processing text message: %s", message.Text)
-		h.handleTextMessage(ctx, event.Source, message)
+		h.handleTextMessage(ctx, event.Source, message, replyToken)
 	default:
 		log.Printf("Unknown message type: %T", event.Message)
 	}
 }
 
-func (h *LineWebhookHandler) handleImageMessage(ctx context.Context, source webhook.SourceInterface, message webhook.ImageMessageContent) {
+func (h *LineWebhookHandler) handleImageMessage(ctx context.Context, source webhook.SourceInterface, message webhook.ImageMessageContent, replyToken string) {
 	userID := h.getUserID(source)
 	if userID == "" {
 		log.Println("Failed to get user ID")
@@ -99,12 +100,13 @@ func (h *LineWebhookHandler) handleImageMessage(ctx context.Context, source webh
 	content, err := h.blobAPI.GetMessageContent(message.Id)
 	if err != nil {
 		log.Printf("Failed to get message content: %v", err)
-		h.replyText(userID, "ขออภัยค่ะ ไม่สามารถดาวน์โหลดรูปภาพได้")
+		h.replyText(replyToken, "ขออภัยค่ะ ไม่สามารถดาวน์โหลดรูปภาพได้")
 		return
 	}
 	defer content.Body.Close()
 
-	h.replyText(userID, "กำลังวิเคราะห์ใบเสร็จ กรุณารอสักครู่นะคะ... 🔍")
+	// Use replyToken for immediate response (free, no quota)
+	h.replyText(replyToken, "กำลังวิเคราะห์ใบเสร็จ กรุณารอสักครู่นะคะ... 🔍")
 
 	contentType := content.Header.Get("Content-Type")
 	if contentType == "" {
@@ -120,14 +122,16 @@ func (h *LineWebhookHandler) handleImageMessage(ctx context.Context, source webh
 	transactionData, err := h.gemini.ProcessReceiptImage(context.Background(), content.Body, imageFormat)
 	if err != nil {
 		log.Printf("Failed to process image with Gemini: %v", err)
-		h.replyText(userID, "ขออภัยค่ะ ไม่สามารถอ่านข้อมูลจากใบเสร็จได้ กรุณาลองใหม่อีกครั้ง")
+		// replyToken already used, must use push
+		h.pushText(userID, "ขออภัยค่ะ ไม่สามารถอ่านข้อมูลจากใบเสร็จได้ กรุณาลองใหม่อีกครั้ง")
 		return
 	}
 
-	h.replyTransactionFlex(userID, transactionData)
+	// replyToken already used, use push for flex message
+	h.pushTransactionFlex(userID, transactionData)
 }
 
-func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webhook.SourceInterface, message webhook.TextMessageContent) {
+func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webhook.SourceInterface, message webhook.TextMessageContent, replyToken string) {
 	userID := h.getUserID(source)
 	log.Printf("handleTextMessage - userID: %s, source type: %T", userID, source)
 
@@ -208,7 +212,8 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 		response, err := h.gemini.ChatWithContext(bgCtx, message.Text, fullContext, chatHistory)
 		if err != nil {
 			log.Printf("Failed to chat with Gemini: %v", err)
-			h.replyText(userID, "ขออภัยค่ะ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง")
+			// Use replyToken for quick error response (free, no quota)
+			h.replyText(replyToken, "ขออภัยค่ะ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง")
 			return
 		}
 
@@ -221,11 +226,11 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 			// Try old format (array of transactions)
 			var txArray []services.TransactionData
 			if err := json.Unmarshal([]byte(response), &txArray); err == nil && len(txArray) > 0 {
-				h.replyTransactionFlexMultiple(userID, txArray)
+				h.pushTransactionFlexMultiple(userID, txArray)
 				return
 			}
 			// Not JSON - send as plain text
-			h.replyText(userID, response)
+			h.pushText(userID, response)
 			return
 		}
 
@@ -241,7 +246,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 			}
 
 			if len(validTransactions) > 0 {
-				h.replyTransactionFlexMultiple(userID, validTransactions)
+				h.pushTransactionFlexMultiple(userID, validTransactions)
 				// Balance is now included in the transaction flex message
 				h.mongo.SaveChatMessage(bgCtx, userID, "assistant", "บันทึกรายการแล้ว")
 
@@ -250,22 +255,22 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 					if tx.Type == "expense" && tx.Category != "" {
 						hasAlert, alertMsg := h.mongo.CheckBudgetAlert(bgCtx, userID, tx.Category, tx.Amount)
 						if hasAlert {
-							h.replyText(userID, alertMsg)
+							h.pushText(userID, alertMsg)
 						}
 					}
 				}
 			} else if len(aiResp.Transactions) > 0 {
 				// Had transactions but all were 0 - likely AI error, reply with chat message
 				if aiResp.Message != "" {
-					h.replyTextWithSuggestions(userID, aiResp.Message)
+					h.pushTextWithSuggestions(userID, aiResp.Message)
 				} else {
-					h.replyTextWithSuggestions(userID, "ไม่สามารถอ่านจำนวนเงินได้ กรุณาลองใหม่อีกครั้งค่ะ")
+					h.pushTextWithSuggestions(userID, "ไม่สามารถอ่านจำนวนเงินได้ กรุณาลองใหม่อีกครั้งค่ะ")
 				}
 			}
 
 		case "update":
 			if lastTx == nil {
-				h.replyText(userID, "ไม่พบรายการที่จะแก้ไขค่ะ")
+				h.pushText(userID, "ไม่พบรายการที่จะแก้ไขค่ะ")
 				return
 			}
 
@@ -343,7 +348,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 			if updatedTx != nil {
 				h.replyUpdatedTransaction(userID, updatedTx, updateMsg, txID)
 			} else {
-				h.replyText(userID, updateMsg)
+				h.pushText(userID, updateMsg)
 			}
 			// Balance is now included in the updated transaction flex message
 			h.mongo.SaveChatMessage(bgCtx, userID, "assistant", updateMsg)
@@ -376,7 +381,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 				transferID, _, err := h.mongo.SaveTransfer(bgCtx, userID, transfer)
 				if err != nil {
 					log.Printf("Failed to save transfer: %v", err)
-					h.replyText(userID, "ไม่สามารถบันทึกการโอนได้")
+					h.pushText(userID, "ไม่สามารถบันทึกการโอนได้")
 					return
 				}
 				h.replyTransferFlex(userID, transfer, transferID, aiResp.Message)
@@ -385,7 +390,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 			}
 
 		case "balance":
-			h.replyBalanceByPaymentType(userID)
+			h.pushBalanceByPaymentType(userID)
 			h.mongo.SaveChatMessage(bgCtx, userID, "assistant", "แสดงยอดคงเหลือ")
 
 		case "search":
@@ -394,12 +399,12 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 				results, err := h.mongo.SearchTransactions(bgCtx, userID, aiResp.SearchQuery, 20)
 				if err != nil {
 					log.Printf("Failed to search transactions: %v", err)
-					h.replyText(userID, "ไม่สามารถค้นหาได้ กรุณาลองใหม่")
+					h.pushText(userID, "ไม่สามารถค้นหาได้ กรุณาลองใหม่")
 					return
 				}
 
 				if len(results) == 0 {
-					h.replyTextWithSuggestions(userID, fmt.Sprintf("ไม่พบรายการ \"%s\" ในประวัติค่ะ", aiResp.SearchQuery))
+					h.pushTextWithSuggestions(userID, fmt.Sprintf("ไม่พบรายการ \"%s\" ในประวัติค่ะ", aiResp.SearchQuery))
 					h.mongo.SaveChatMessage(bgCtx, userID, "assistant", "ไม่พบรายการ")
 					return
 				}
@@ -414,7 +419,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 				h.replyAnalysisFlex(userID, aiResp.Analysis, aiResp.Message)
 				h.mongo.SaveChatMessage(bgCtx, userID, "assistant", aiResp.Message)
 			} else if aiResp.Message != "" {
-				h.replyTextWithSuggestions(userID, aiResp.Message)
+				h.pushTextWithSuggestions(userID, aiResp.Message)
 				h.mongo.SaveChatMessage(bgCtx, userID, "assistant", aiResp.Message)
 			}
 
@@ -423,14 +428,14 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 				err := h.mongo.SetBudget(bgCtx, userID, aiResp.Budget.Category, aiResp.Budget.Amount)
 				if err != nil {
 					log.Printf("Failed to set budget: %v", err)
-					h.replyText(userID, "ไม่สามารถตั้งงบประมาณได้ ลองใหม่นะคะ")
+					h.pushText(userID, "ไม่สามารถตั้งงบประมาณได้ ลองใหม่นะคะ")
 				} else {
 					// Get updated budget status and show
 					h.replyBudgetFlex(userID, aiResp.Budget.Category, aiResp.Budget.Amount, aiResp.Message)
 					h.mongo.SaveChatMessage(bgCtx, userID, "assistant", aiResp.Message)
 				}
 			} else if aiResp.Message != "" {
-				h.replyTextWithSuggestions(userID, aiResp.Message)
+				h.pushTextWithSuggestions(userID, aiResp.Message)
 			}
 
 		case "export":
@@ -444,13 +449,13 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 					days = 30
 				}
 
-				h.replyText(userID, aiResp.Message)
+				h.pushText(userID, aiResp.Message)
 
 				if format == "pdf" {
 					data, filename, err := h.export.ExportToPDF(bgCtx, userID, days)
 					if err != nil {
 						log.Printf("Failed to export PDF: %v", err)
-						h.replyText(userID, "ไม่สามารถสร้างไฟล์ PDF ได้ ลองใหม่นะคะ")
+						h.pushText(userID, "ไม่สามารถสร้างไฟล์ PDF ได้ ลองใหม่นะคะ")
 					} else {
 						h.sendFile(userID, data, filename, "application/pdf")
 					}
@@ -458,7 +463,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 					data, filename, err := h.export.ExportToExcel(bgCtx, userID, days)
 					if err != nil {
 						log.Printf("Failed to export Excel: %v", err)
-						h.replyText(userID, "ไม่สามารถสร้างไฟล์ Excel ได้ ลองใหม่นะคะ")
+						h.pushText(userID, "ไม่สามารถสร้างไฟล์ Excel ได้ ลองใหม่นะคะ")
 					} else {
 						h.sendFile(userID, data, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 					}
@@ -471,7 +476,7 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 			h.mongo.SaveChatMessage(bgCtx, userID, "assistant", "แสดงกราฟสัดส่วนรายจ่าย")
 
 		case "chat":
-			h.replyTextWithSuggestions(userID, aiResp.Message)
+			h.pushTextWithSuggestions(userID, aiResp.Message)
 			h.mongo.SaveChatMessage(bgCtx, userID, "assistant", aiResp.Message)
 
 		default:
@@ -484,11 +489,11 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 			}
 
 			if len(validTx) > 0 {
-				h.replyTransactionFlexMultiple(userID, validTx)
+				h.pushTransactionFlexMultiple(userID, validTx)
 			} else if aiResp.Message != "" {
-				h.replyTextWithSuggestions(userID, aiResp.Message)
+				h.pushTextWithSuggestions(userID, aiResp.Message)
 			} else {
-				h.replyText(userID, response)
+				h.pushText(userID, response)
 			}
 	}
 }
@@ -511,7 +516,22 @@ func (h *LineWebhookHandler) getUserID(source webhook.SourceInterface) string {
 	return ""
 }
 
-func (h *LineWebhookHandler) replyText(userID, text string) {
+func (h *LineWebhookHandler) replyText(replyToken, text string) {
+	_, err := h.bot.ReplyMessage(&messaging_api.ReplyMessageRequest{
+		ReplyToken: replyToken,
+		Messages: []messaging_api.MessageInterface{
+			messaging_api.TextMessage{
+				Text: text,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to send reply: %v", err)
+	}
+}
+
+// pushText sends a push message (uses quota but works anytime)
+func (h *LineWebhookHandler) pushText(userID, text string) {
 	_, err := h.bot.PushMessage(&messaging_api.PushMessageRequest{
 		To: userID,
 		Messages: []messaging_api.MessageInterface{
@@ -521,12 +541,37 @@ func (h *LineWebhookHandler) replyText(userID, text string) {
 		},
 	}, "")
 	if err != nil {
-		log.Printf("Failed to send reply: %v", err)
+		log.Printf("Failed to push message: %v", err)
 	}
 }
 
 // replyTextWithSuggestions sends text with quick reply suggestions
-func (h *LineWebhookHandler) replyTextWithSuggestions(userID, text string) {
+func (h *LineWebhookHandler) replyTextWithSuggestions(replyToken, text string) {
+	_, err := h.bot.ReplyMessage(&messaging_api.ReplyMessageRequest{
+		ReplyToken: replyToken,
+		Messages: []messaging_api.MessageInterface{
+			messaging_api.TextMessage{
+				Text: text,
+				QuickReply: &messaging_api.QuickReply{
+					Items: []messaging_api.QuickReplyItem{
+						{Action: &messaging_api.MessageAction{Label: "💰 ดูยอดคงเหลือ", Text: "ยอดคงเหลือ"}},
+						{Action: &messaging_api.MessageAction{Label: "📊 สรุปวันนี้", Text: "สรุปวันนี้"}},
+						{Action: &messaging_api.MessageAction{Label: "🔄 โอนเงิน", Text: "โอนเงิน"}},
+						{Action: &messaging_api.MessageAction{Label: "💵 ฝากเงิน", Text: "ฝากเงิน"}},
+						{Action: &messaging_api.MessageAction{Label: "🏧 ถอนเงิน", Text: "ถอนเงิน"}},
+						{Action: &messaging_api.MessageAction{Label: "💳 จ่ายบัตร", Text: "จ่ายบัตรเครดิต"}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to send reply with suggestions: %v", err)
+	}
+}
+
+// pushTextWithSuggestions sends text with quick reply suggestions (uses quota)
+func (h *LineWebhookHandler) pushTextWithSuggestions(userID, text string) {
 	_, err := h.bot.PushMessage(&messaging_api.PushMessageRequest{
 		To: userID,
 		Messages: []messaging_api.MessageInterface{
@@ -546,7 +591,7 @@ func (h *LineWebhookHandler) replyTextWithSuggestions(userID, text string) {
 		},
 	}, "")
 	if err != nil {
-		log.Printf("Failed to send reply with suggestions: %v", err)
+		log.Printf("Failed to push message with suggestions: %v", err)
 	}
 }
 
@@ -848,7 +893,7 @@ func (h *LineWebhookHandler) replyTransferFlex(userID string, transfer *services
 	}, "")
 	if err != nil {
 		log.Printf("Failed to send transfer flex: %v", err)
-		h.replyText(userID, message)
+		h.pushText(userID, message)
 	}
 }
 
@@ -871,14 +916,14 @@ func getPaymentName(useType int, bankName, creditCardName string) string {
 	return "💵 เงินสด"
 }
 
-func (h *LineWebhookHandler) replyTransactionFlex(userID string, tx *services.TransactionData) {
+func (h *LineWebhookHandler) pushTransactionFlex(userID string, tx *services.TransactionData) {
 	ctx := context.Background()
 
 	// Auto save to MongoDB
 	txID, err := h.mongo.SaveTransaction(ctx, userID, tx)
 	if err != nil {
 		log.Printf("Failed to save transaction: %v", err)
-		h.replyText(userID, "ขออภัยค่ะ ไม่สามารถบันทึกข้อมูลได้")
+		h.pushText(userID, "ขออภัยค่ะ ไม่สามารถบันทึกข้อมูลได้")
 		return
 	}
 	log.Printf("Transaction saved with ID: %s", txID)
@@ -1205,18 +1250,18 @@ func (h *LineWebhookHandler) replyTransactionFlex(userID string, tx *services.Tr
 	}, "")
 	if pushErr != nil {
 		log.Printf("Failed to send flex message: %v", pushErr)
-		h.replyText(userID, fmt.Sprintf("%s: %.2f บาท (บันทึกแล้ว)", typeText, tx.Amount))
+		h.pushText(userID, fmt.Sprintf("%s: %.2f บาท (บันทึกแล้ว)", typeText, tx.Amount))
 	}
 }
 
-func (h *LineWebhookHandler) replyTransactionFlexMultiple(userID string, transactions []services.TransactionData) {
+func (h *LineWebhookHandler) pushTransactionFlexMultiple(userID string, transactions []services.TransactionData) {
 	if len(transactions) == 0 {
 		return
 	}
 
 	// If only one transaction, use single flex
 	if len(transactions) == 1 {
-		h.replyTransactionFlex(userID, &transactions[0])
+		h.pushTransactionFlex(userID, &transactions[0])
 		return
 	}
 
@@ -1282,7 +1327,7 @@ func (h *LineWebhookHandler) replyTransactionFlexMultiple(userID string, transac
 			}
 			texts = append(texts, fmt.Sprintf("%s %s: %.2f บาท", typeText, tx.Description, tx.Amount))
 		}
-		h.replyText(userID, strings.Join(texts, "\n")+" (บันทึกแล้ว)")
+		h.pushText(userID, strings.Join(texts, "\n")+" (บันทึกแล้ว)")
 	}
 }
 
@@ -1683,12 +1728,13 @@ func (h *LineWebhookHandler) replyUpdatedTransaction(userID string, tx *services
 	}, "")
 	if err != nil {
 		log.Printf("Failed to send updated transaction: %v", err)
-		h.replyText(userID, message)
+		h.pushText(userID, message)
 	}
 }
 
 func (h *LineWebhookHandler) handlePostback(ctx context.Context, event webhook.PostbackEvent) {
 	userID := h.getUserID(event.Source)
+	replyToken := event.ReplyToken
 	if userID == "" {
 		log.Println("Failed to get user ID from postback")
 		return
@@ -1712,14 +1758,14 @@ func (h *LineWebhookHandler) handlePostback(ctx context.Context, event webhook.P
 	case "delete":
 		txID := params["txid"]
 		if txID == "" {
-			h.replyText(userID, "ไม่พบรหัสรายการ")
+			h.replyText(replyToken, "ไม่พบรหัสรายการ")
 			return
 		}
 
 		err := h.mongo.DeleteTransaction(ctx, userID, txID)
 		if err != nil {
 			log.Printf("Failed to delete transaction: %v", err)
-			h.replyText(userID, "ไม่สามารถลบรายการได้")
+			h.replyText(replyToken, "ไม่สามารถลบรายการได้")
 			return
 		}
 
@@ -1730,12 +1776,12 @@ func (h *LineWebhookHandler) handlePostback(ctx context.Context, event webhook.P
 			balanceText = fmt.Sprintf("\n💰 ยอดคงเหลือ: ฿%.2f", balance.Balance)
 		}
 
-		h.replyText(userID, "🗑️ ลบรายการเรียบร้อยแล้ว"+balanceText)
+		h.replyText(replyToken, "🗑️ ลบรายการเรียบร้อยแล้ว"+balanceText)
 
 	case "delete_all":
 		txIDs := params["txids"]
 		if txIDs == "" {
-			h.replyText(userID, "ไม่พบรหัสรายการ")
+			h.replyText(replyToken, "ไม่พบรหัสรายการ")
 			return
 		}
 
@@ -1753,41 +1799,41 @@ func (h *LineWebhookHandler) handlePostback(ctx context.Context, event webhook.P
 			deletedCount++
 		}
 
-		h.replyText(userID, fmt.Sprintf("🗑️ ลบ %d รายการเรียบร้อยแล้ว", deletedCount))
-		// Show updated balance
-		h.replyBalanceByPaymentType(userID)
+		h.replyText(replyToken, fmt.Sprintf("🗑️ ลบ %d รายการเรียบร้อยแล้ว", deletedCount))
+		// Show updated balance - must use push since replyToken already used
+		h.pushBalanceByPaymentType(userID)
 
 	case "delete_transfer":
 		transferID := params["transfer_id"]
 		if transferID == "" {
-			h.replyText(userID, "ไม่พบรหัสการโอน")
+			h.replyText(replyToken, "ไม่พบรหัสการโอน")
 			return
 		}
 
 		err := h.mongo.DeleteTransfer(ctx, userID, transferID)
 		if err != nil {
 			log.Printf("Failed to delete transfer: %v", err)
-			h.replyText(userID, "ไม่สามารถยกเลิกการโอนได้")
+			h.replyText(replyToken, "ไม่สามารถยกเลิกการโอนได้")
 			return
 		}
 
-		h.replyText(userID, "🗑️ ยกเลิกการโอนเรียบร้อยแล้ว")
-		// Show updated balance
-		h.replyBalanceByPaymentType(userID)
+		h.replyText(replyToken, "🗑️ ยกเลิกการโอนเรียบร้อยแล้ว")
+		// Show updated balance - must use push since replyToken already used
+		h.pushBalanceByPaymentType(userID)
 
 	default:
 		log.Printf("Unknown postback action: %s", action)
 	}
 }
 
-// replyBalanceByPaymentType shows balance breakdown by payment type with total assets
-func (h *LineWebhookHandler) replyBalanceByPaymentType(userID string) {
+// pushBalanceByPaymentType shows balance breakdown by payment type with total assets
+func (h *LineWebhookHandler) pushBalanceByPaymentType(userID string) {
 	ctx := context.Background()
 
 	// Get balance by payment type
 	balances, err := h.mongo.GetBalanceByPaymentType(ctx, userID)
 	if err != nil || len(balances) == 0 {
-		h.replyText(userID, "ยังไม่มีรายการค่ะ")
+		h.pushText(userID, "ยังไม่มีรายการค่ะ")
 		return
 	}
 
@@ -2330,7 +2376,7 @@ func (h *LineWebhookHandler) replyAnalysisFlex(userID string, analysis *services
 		if analysis.Advice != "" {
 			fallbackText += "\n💡 " + analysis.Advice
 		}
-		h.replyText(userID, fallbackText)
+		h.pushText(userID, fallbackText)
 	}
 }
 
@@ -2468,7 +2514,7 @@ func (h *LineWebhookHandler) replyBudgetFlex(userID string, category string, amo
 	}, "")
 	if err != nil {
 		log.Printf("Failed to send budget flex: %v", err)
-		h.replyText(userID, message)
+		h.pushText(userID, message)
 	}
 }
 
@@ -2485,7 +2531,7 @@ func (h *LineWebhookHandler) sendFile(userID string, data []byte, filename strin
 	// Check if Firebase is configured
 	if h.firebase == nil {
 		log.Println("Firebase not configured, cannot upload file")
-		h.replyText(userID, "❌ ระบบยังไม่พร้อมส่งไฟล์ค่ะ\n\nกรุณาติดต่อผู้ดูแลระบบ")
+		h.pushText(userID, "❌ ระบบยังไม่พร้อมส่งไฟล์ค่ะ\n\nกรุณาติดต่อผู้ดูแลระบบ")
 		return
 	}
 
@@ -2496,7 +2542,7 @@ func (h *LineWebhookHandler) sendFile(userID string, data []byte, filename strin
 	downloadURL, err := h.firebase.UploadFile(ctx, data, filename, mimeType)
 	if err != nil {
 		log.Printf("Failed to upload file to Firebase: %v", err)
-		h.replyText(userID, "❌ ไม่สามารถอัปโหลดไฟล์ได้\n\nกรุณาลองใหม่อีกครั้งค่ะ")
+		h.pushText(userID, "❌ ไม่สามารถอัปโหลดไฟล์ได้\n\nกรุณาลองใหม่อีกครั้งค่ะ")
 		return
 	}
 
@@ -2602,7 +2648,7 @@ func (h *LineWebhookHandler) sendFileDownloadFlex(userID, fileType, filename str
 		log.Printf("Failed to send file download flex: %v", err)
 		// Fallback to text
 		message := fmt.Sprintf("✅ ไฟล์ %s พร้อมแล้ว!\n📁 %s (%d KB)\n\n📥 ดาวน์โหลด: %s\n\n⚠️ ลิงก์หมดอายุหลังดาวน์โหลดครั้งแรก", fileType, filename, fileSize, downloadURL)
-		h.replyText(userID, message)
+		h.pushText(userID, message)
 	}
 }
 
@@ -2613,7 +2659,7 @@ func (h *LineWebhookHandler) replyChartFlex(userID string) {
 	// Get spending data
 	chartData, total, err := h.export.GetCategorySpendingForChart(bgCtx, userID)
 	if err != nil || len(chartData) == 0 {
-		h.replyText(userID, "ไม่มีข้อมูลรายจ่ายเดือนนี้ค่ะ")
+		h.pushText(userID, "ไม่มีข้อมูลรายจ่ายเดือนนี้ค่ะ")
 		return
 	}
 
@@ -2761,14 +2807,14 @@ func (h *LineWebhookHandler) replyChartFlex(userID string) {
 	}, "")
 	if err != nil {
 		log.Printf("Failed to send chart flex: %v", err)
-		h.replyText(userID, "ไม่สามารถแสดงกราฟได้ ลองใหม่นะคะ")
+		h.pushText(userID, "ไม่สามารถแสดงกราฟได้ ลองใหม่นะคะ")
 	}
 }
 
 // replySearchResults displays search results with Flex Message carousel
 func (h *LineWebhookHandler) replySearchResults(userID string, results []services.SearchResult, keyword string) {
 	if len(results) == 0 {
-		h.replyText(userID, "ไม่พบรายการที่ค้นหา")
+		h.pushText(userID, "ไม่พบรายการที่ค้นหา")
 		return
 	}
 
@@ -2976,7 +3022,7 @@ func (h *LineWebhookHandler) replySearchResults(userID string, results []service
 		log.Printf("Failed to send search results: %v", err)
 		// Fallback to text
 		summaryText := h.mongo.GetTransactionSummaryText(results)
-		h.replyText(userID, summaryText)
+		h.pushText(userID, summaryText)
 	}
 }
 
