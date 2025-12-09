@@ -3,10 +3,15 @@ package services
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -70,19 +75,31 @@ type ExportData struct {
 	Days   int    `json:"days"`   // number of days to export (default 30)
 }
 
+// QueryFilter represents AI-generated query parameters for MongoDB
+type QueryFilter struct {
+	Type       string   `json:"type"`       // "income", "expense", "all"
+	Categories []string `json:"categories"` // filter by categories
+	DateFrom   string   `json:"date_from"`  // YYYY-MM-DD
+	DateTo     string   `json:"date_to"`    // YYYY-MM-DD
+	Days       int      `json:"days"`       // shortcut: last N days
+	UseType    int      `json:"usetype"`    // -1=all, 0=cash, 1=credit, 2=bank
+	BankName   string   `json:"bankname"`   // filter by bank
+	Keyword    string   `json:"keyword"`    // search keyword
+	GroupBy    string   `json:"group_by"`   // "category", "date", "payment", "none"
+	Limit      int      `json:"limit"`      // max results
+}
+
 // AIResponse represents the AI's response with action
 type AIResponse struct {
-	Action         string            `json:"action"`          // "new", "update", "transfer", "balance", "search", "analyze", "budget", "export", "chart", "chat"
-	Transactions   []TransactionData `json:"transactions"`    // for "new" action
-	Transfer       *TransferData     `json:"transfer"`        // for "transfer" action (many-to-many)
-	UpdateTxID     string            `json:"update_txid"`     // for "update" action
-	UpdateField    string            `json:"update_field"`    // "amount", "usetype", etc.
-	UpdateValue    interface{}       `json:"update_value"`
-	SearchQuery    string            `json:"search_query"`    // for "search" action - keyword to search
-	Analysis       *AnalysisData     `json:"analysis"`        // for "analyze" action
-	Budget         *BudgetData       `json:"budget"`          // for "budget" action
-	Export         *ExportData       `json:"export"`          // for "export" action
-	Message        string            `json:"message"`         // for "chat" action
+	Action       string            `json:"action"`       // "new", "update", "transfer", "balance", "search", "analyze", "budget", "export", "chat"
+	Transactions []TransactionData `json:"transactions"` // for "new" action
+	Transfer     *TransferData     `json:"transfer"`     // for "transfer" action
+	UpdateField  string            `json:"update_field"` // "amount", "usetype", etc.
+	UpdateValue  interface{}       `json:"update_value"`
+	Query        *QueryFilter      `json:"query"`  // for balance/search/analyze - AI creates query
+	Budget       *BudgetData       `json:"budget"` // for "budget" action
+	Export       *ExportData       `json:"export"` // for "export" action
+	Message      string            `json:"message"`
 }
 
 type TransactionItem struct {
@@ -92,8 +109,8 @@ type TransactionItem struct {
 }
 
 const (
-	aiAPIEndpoint = "https://aiapi-bjvy6dhba-jaturapornchais-projects.vercel.app/api/chat"
-	aiAPITimeout  = 30 * time.Second
+	aiAPIEndpoint = "https://aiapi-e4y6ekwr1-jaturapornchais-projects.vercel.app/api/chat"
+	aiAPITimeout  = 60 * time.Second
 )
 
 // AIChat interface for AI services
@@ -105,8 +122,10 @@ type AIChat interface {
 
 // AIService handles AI chat via external API
 type AIService struct {
-	httpClient *http.Client
-	systemPrompt string
+	httpClient    *http.Client
+	systemPrompt  string
+	examplesPrompt string
+	receiptPrompt  string
 }
 
 // AIAPIRequest represents the request to AI API
@@ -114,94 +133,122 @@ type AIAPIRequest struct {
 	Message string `json:"message"`
 }
 
-// AIAPIResponse represents the response from AI API
+// AIAPIResponse represents the response from AI API (simple format)
 type AIAPIResponse struct {
 	Response string `json:"response"`
 	Model    string `json:"model"`
 	Error    string `json:"error,omitempty"`
 }
 
+// GeminiResponse represents the raw Gemini API response format
+type GeminiResponse struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+	} `json:"candidates"`
+	Error string `json:"error,omitempty"`
+}
+
 func NewAIService() *AIService {
-	return &AIService{
+	svc := &AIService{
 		httpClient: &http.Client{
 			Timeout: aiAPITimeout,
 		},
-		systemPrompt: buildSystemPrompt(),
 	}
+	svc.loadPrompts()
+	return svc
 }
 
-func buildSystemPrompt() string {
-	return `คุณคือ "สติสตางค์" เลขาส่วนตัวด้านการเงิน ทำงานให้เจ้านายที่ไม่ค่อยเก่งเรื่องเทคโนโลยี
+// loadPrompts loads prompt templates from markdown files
+func (s *AIService) loadPrompts() {
+	// Try to find prompts directory
+	promptsDir := findPromptsDir()
 
-บทบาทของคุณ:
-- เป็นเลขาที่ใส่ใจ ช่วยจดบันทึก ย้ำทวน และยืนยันก่อนทำการสำคัญ
-- ไม่ทึกทักเอาเอง ถ้าไม่แน่ใจให้ถามกลับ
-- ใช้ภาษาง่ายๆ เหมือนคุยกับเพื่อน ไม่ใช้ศัพท์เทคนิค
-- สรุปให้หลังทำรายการเสร็จ
-- ถ้าเห็นว่างบเกิน หรือมีอะไรผิดปกติ ให้เตือนด้วยความห่วงใย
+	// Load system prompt
+	s.systemPrompt = loadPromptFile(filepath.Join(promptsDir, "system.md"))
+	if s.systemPrompt == "" {
+		s.systemPrompt = getDefaultSystemPrompt()
+	}
 
-ตอบเป็น JSON เท่านั้น:
-action: new|update|transfer|balance|search|analyze|budget|export|chart|chat
-usetype: 0=เงินสด,1=บัตรเครดิต,2=ธนาคาร
-type: "income"=รายรับ(เงินเข้า), "expense"=รายจ่าย(เงินออก)
+	// Load examples prompt
+	s.examplesPrompt = loadPromptFile(filepath.Join(promptsDir, "examples.md"))
 
-คำสำคัญรายได้ (income): เงินเดือน,โบนัส,ได้รับ,รายรับ,เงินเข้า,ขายของได้,ค่าจ้าง,รายได้,ได้เงิน,รับเงิน,เก็บเงิน
-คำสำคัญรายจ่าย (expense): จ่าย,ซื้อ,กิน,ค่า,รายจ่าย,เสีย,หมดไป,โดน,จัดไป
-คำสำคัญค้นหา (search): ตอนไหน,เมื่อไหร่,หา,ค้นหา,ประวัติ,เคย,จ่ายไป,ซื้อไป
-คำสำคัญวิเคราะห์ (analyze): สรุป,วิเคราะห์,เปรียบเทียบ,แนะนำ,ประเมิน,ใช้จ่ายอะไรเยอะ,หมดไปกับ,เดือนนี้,สัปดาห์นี้,7วัน,วันนี้,จ่ายอะไรบ้าง,ใช้ไปเท่าไหร่,เงินพอไหม,ออมเท่าไหร่,50/30/20,ดูงบ
-คำสำคัญตั้งงบ (budget): ตั้งงบ,กำหนดงบ,งบอาหาร,งบเดินทาง,งบช้อปปิ้ง,budget
-คำสำคัญ export (export): ส่งออก,export,excel,ดาวน์โหลด,ไฟล์,รายงาน,pdf
-คำสำคัญ chart (chart): กราฟ,แผนภูมิ,สัดส่วน,donut,pie,chart
+	// Load receipt prompt
+	s.receiptPrompt = loadPromptFile(filepath.Join(promptsDir, "receipt.md"))
+	if s.receiptPrompt == "" {
+		s.receiptPrompt = getDefaultReceiptPrompt()
+	}
 
-รูปแบบ JSON:
-1. รายการใหม่: {"action":"new","transactions":[{"amount":100,"type":"expense|income","category":"...","description":"...","usetype":0,"bankname":"","creditcardname":""}],"message":"..."}
-2. แก้ไข: {"action":"update","update_field":"amount|usetype","update_value":...,"message":"..."}
-3. โอน/ฝาก/ถอน: {"action":"transfer","transfer":{"from":[...],"to":[...],"description":"..."},"message":"..."}
-4. ดูยอด: {"action":"balance","message":"..."}
-5. ค้นหา: {"action":"search","search_query":"คำค้น","message":"..."}
-6. วิเคราะห์/สรุป: {"action":"analyze","analysis":{"title":"หัวข้อ","summary":"สรุปสั้นๆ","insights":[{"label":"หมวด","value":"ค่า","amount":1000}],"advice":"คำแนะนำ"},"message":"..."}
-7. ตั้งงบประมาณ: {"action":"budget","budget":{"category":"อาหาร","amount":5000},"message":"..."}
-8. ส่งออกไฟล์: {"action":"export","export":{"format":"excel|pdf","days":30},"message":"..."}
-9. แสดงกราฟ: {"action":"chart","message":"..."}
-10. สนทนา: {"action":"chat","message":"..."}
+	log.Printf("Loaded prompts from: %s", promptsDir)
+}
 
-ตัวอย่างรายได้ (income):
-- "เงินเดือน 30000 เข้ากรุงไทย" → {"action":"new","transactions":[{"amount":30000,"type":"income","category":"เงินเดือน","usetype":2,"bankname":"กรุงไทย"}]}
-- "โบนัส 10000 เข้า SCB" → {"action":"new","transactions":[{"amount":10000,"type":"income","category":"โบนัส","usetype":2,"bankname":"SCB"}]}
+// findPromptsDir finds the prompts directory
+func findPromptsDir() string {
+	// Try relative paths
+	paths := []string{
+		"prompts",
+		"./prompts",
+		"../prompts",
+	}
 
-ตัวอย่างรายจ่าย (expense):
-- "กินข้าว 150" → {"action":"new","transactions":[{"amount":150,"type":"expense","category":"อาหาร","usetype":0}]}
-- "จ่ายค่าน้ำมัน 1500 บัตร KTC" → {"action":"new","transactions":[{"amount":1500,"type":"expense","category":"เดินทาง","usetype":1,"creditcardname":"KTC"}]}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
 
-ตัวอย่างการโอน (transfer):
-- "โอน 1000 จากกรุงไทยไปกรุงเทพ" → from:[{amount:1000,usetype:2,bankname:"กรุงไทย"}] to:[{amount:1000,usetype:2,bankname:"กรุงเทพ"}]
-- "ฝากเงิน 5000 เข้ากรุงไทย" → from:[{amount:5000,usetype:0}] to:[{amount:5000,usetype:2,bankname:"กรุงไทย"}]
-- "ถอนเงิน 2000 จากกสิกร" → from:[{amount:2000,usetype:2,bankname:"กสิกร"}] to:[{amount:2000,usetype:0}]
+	return "prompts"
+}
 
-การจับคู่ธนาคาร/บัตรเครดิต/หมวดหมู่:
-- ถ้า context มี "บัญชีที่มี:" ให้ match ชื่อจากรายการนั้น
-- ถ้า context มี "หมวดหมู่ที่มี:" ให้ match หมวดหมู่จากรายการนั้น
-- ถ้าชื่อไม่ตรงกับที่มี → ให้ถามยืนยันก่อน
+// loadPromptFile reads a prompt file and returns its content
+func loadPromptFile(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("Could not load prompt file %s: %v", path, err)
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
 
-หมวดหมู่มาตรฐาน:
-- รายจ่าย: อาหาร,เดินทาง,ที่อยู่,ค่าน้ำ,ค่าไฟ,สาธารณูปโภค,ช้อปปิ้ง,บันเทิง,สุขภาพ,การศึกษา,ของใช้,อื่นๆ
-- รายรับ: เงินเดือน,โบนัส,ค่าจ้าง,ขายของ,ดอกเบี้ย,เงินปันผล,รายได้เสริม,รายรับอื่นๆ
+func getDefaultSystemPrompt() string {
+	return `คุณคือ "สติสตางค์" ตอบ JSON เท่านั้น
+action: new|update|transfer|balance|search|analyze|budget|export|chat
+usetype: 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
+type: income|expense`
+}
 
-เงินโอน (transfer) ไม่นับเป็นรายรับ/รายจ่าย`
+func getDefaultReceiptPrompt() string {
+	return `วิเคราะห์ใบเสร็จนี้และตอบเป็น JSON: {"date":"YYYY-MM-DD","merchant":"ร้าน","amount":0,"category":"หมวด","type":"expense","description":"รายละเอียด","usetype":0}`
 }
 
 // ChatWithContext sends a message to AI API with context
-func (s *AIService) ChatWithContext(ctx context.Context, message string, lastTxInfo string, chatHistory string) (string, error) {
-	// Build prompt with system instruction and context
-	prompt := s.systemPrompt + "\n\n---\n\n"
+// schema contains user's data structure: "ธนาคาร:SCB,KBank|บัตร:CITI|หมวด:อาหาร,เดินทาง"
+// chatHistory contains recent messages in format "user: xxx\nassistant: yyy\n..."
+func (s *AIService) ChatWithContext(ctx context.Context, message string, schema string, chatHistory string) (string, error) {
+	// Build prompt with system instruction, examples, and context
+	prompt := s.systemPrompt
+
+	// Add examples if available
+	if s.examplesPrompt != "" {
+		prompt += "\n\n" + s.examplesPrompt
+	}
+
+	prompt += "\n\n---\n\n"
 	prompt += "วันนี้: " + getCurrentDate()
-	if lastTxInfo != "" {
-		prompt += "\nล่าสุด: " + lastTxInfo
+
+	if schema != "" {
+		prompt += "\nข้อมูลที่มี: " + schema
 	}
+
+	// Add chat history for context
 	if chatHistory != "" {
-		prompt += "\nประวัติ: " + chatHistory
+		prompt += "\n\nประวัติการสนทนา:\n" + chatHistory
 	}
-	prompt += "\nผู้ใช้: " + message
+
+	prompt += "\n\nผู้ใช้: " + message
 
 	// Call AI API
 	reqBody := AIAPIRequest{Message: prompt}
@@ -231,24 +278,233 @@ func (s *AIService) ChatWithContext(ctx context.Context, message string, lastTxI
 		return "", fmt.Errorf("AI API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
+	// Log raw response for debugging
+	log.Printf("AI API raw response: %s", string(body))
+
+	// Try parsing as simple format first
 	var apiResp AIAPIResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return "", fmt.Errorf("failed to parse AI response: %w", err)
+	if err := json.Unmarshal(body, &apiResp); err == nil && apiResp.Response != "" {
+		return apiResp.Response, nil
 	}
 
-	if apiResp.Error != "" {
-		return "", fmt.Errorf("AI API error: %s", apiResp.Error)
+	// Try parsing as Gemini raw format
+	var geminiResp GeminiResponse
+	if err := json.Unmarshal(body, &geminiResp); err != nil {
+		return "", fmt.Errorf("failed to parse AI response: %w (raw: %s)", err, string(body))
 	}
 
-	return apiResp.Response, nil
+	if geminiResp.Error != "" {
+		return "", fmt.Errorf("AI API error: %s", geminiResp.Error)
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("empty response from AI API")
+	}
+
+	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
 }
 
-// ProcessReceiptImage processes receipt image (not supported by AI API)
+// ProcessReceiptImage processes receipt image via AI API simplified image endpoint
 func (s *AIService) ProcessReceiptImage(ctx context.Context, imageData io.Reader, mimeType string) (*TransactionData, error) {
-	return nil, fmt.Errorf("image processing not supported by AI API")
+	// Read image data
+	imgBytes, err := io.ReadAll(imageData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read image data: %w", err)
+	}
+
+	// Convert to base64
+	base64Image := base64.StdEncoding.EncodeToString(imgBytes)
+
+	// Use receipt prompt from file + current date
+	receiptPrompt := s.receiptPrompt + "\n\nวันที่ปัจจุบัน: " + getCurrentDate()
+
+	// Use /api/chat with contents format (Gemini full mode)
+	reqBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"role": "user",
+				"parts": []map[string]interface{}{
+					{"text": receiptPrompt},
+					{
+						"inlineData": map[string]string{
+							"mimeType": mimeType,
+							"data":     base64Image,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", aiAPIEndpoint, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call AI API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("AI API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// Parse Gemini response format
+	var geminiResp struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+		Error string `json:"error,omitempty"`
+	}
+
+	if err := json.Unmarshal(body, &geminiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	if geminiResp.Error != "" {
+		return nil, fmt.Errorf("AI API error: %s", geminiResp.Error)
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from AI API")
+	}
+
+	responseText := geminiResp.Candidates[0].Content.Parts[0].Text
+
+	// Clean JSON response (remove markdown code blocks if present)
+	responseText = cleanJSONResponse(responseText)
+
+	// Parse transaction data
+	var txData TransactionData
+	if err := json.Unmarshal([]byte(responseText), &txData); err != nil {
+		return nil, fmt.Errorf("failed to parse transaction data: %w (response: %s)", err, responseText)
+	}
+
+	return &txData, nil
+}
+
+// cleanJSONResponse removes markdown code blocks from JSON response
+func cleanJSONResponse(s string) string {
+	// Remove ```json prefix and ``` suffix if present
+	if len(s) > 7 && s[:7] == "```json" {
+		s = s[7:]
+	} else if len(s) > 3 && s[:3] == "```" {
+		s = s[3:]
+	}
+	// Remove trailing ```
+	if len(s) > 3 && s[len(s)-3:] == "```" {
+		s = s[:len(s)-3]
+	}
+	// Trim whitespace
+	for len(s) > 0 && (s[0] == ' ' || s[0] == '\n' || s[0] == '\r' || s[0] == '\t') {
+		s = s[1:]
+	}
+	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\n' || s[len(s)-1] == '\r' || s[len(s)-1] == '\t') {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // Close closes the AI service (no-op for HTTP client)
 func (s *AIService) Close() error {
 	return nil
+}
+
+// EmbeddingRequest represents the request to embedding API
+type EmbeddingRequest struct {
+	Text string `json:"text"`
+}
+
+// EmbeddingResponse represents the response from embedding API
+type EmbeddingResponse struct {
+	Embedding []float32 `json:"embedding"`
+	Error     string    `json:"error,omitempty"`
+}
+
+// EmbeddingAPIEndpoint is the URL for the embedding API
+const EmbeddingAPIEndpoint = "https://aiapi-m34uubkg2-jaturapornchais-projects.vercel.app/api/embed"
+
+// ErrEmbeddingUnavailable indicates the embedding API is not available
+var ErrEmbeddingUnavailable = fmt.Errorf("embedding API unavailable")
+
+// GenerateEmbedding generates vector embedding for text using AI API
+// Returns a 768-dimensional vector for text-embedding-004 model
+// Returns ErrEmbeddingUnavailable if the API is not available
+func (s *AIService) GenerateEmbedding(ctx context.Context, text string) ([]float32, error) {
+	if text == "" {
+		return nil, fmt.Errorf("empty text for embedding")
+	}
+
+	reqBody := EmbeddingRequest{Text: text}
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", EmbeddingAPIEndpoint, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Embedding API call failed: %v", err)
+		return nil, ErrEmbeddingUnavailable
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Check for 404 or other server errors indicating API not available
+	if resp.StatusCode == http.StatusNotFound {
+		log.Printf("Embedding API not found (404)")
+		return nil, ErrEmbeddingUnavailable
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("embedding API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var embResp EmbeddingResponse
+	if err := json.Unmarshal(body, &embResp); err != nil {
+		return nil, fmt.Errorf("failed to parse embedding response: %w", err)
+	}
+
+	if embResp.Error != "" {
+		return nil, fmt.Errorf("embedding API error: %s", embResp.Error)
+	}
+
+	if len(embResp.Embedding) == 0 {
+		return nil, fmt.Errorf("empty embedding from API")
+	}
+
+	return embResp.Embedding, nil
+}
+
+// IsEmbeddingAvailable checks if the embedding API is available
+func (s *AIService) IsEmbeddingAvailable(ctx context.Context) bool {
+	// Try to generate a test embedding
+	_, err := s.GenerateEmbedding(ctx, "test")
+	return err == nil
 }

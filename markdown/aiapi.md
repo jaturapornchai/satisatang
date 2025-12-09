@@ -291,9 +291,190 @@ fetch('https://aiapi-2t4ecfkxh-jaturapornchais-projects.vercel.app/api/chat', {
 
 ---
 
+## 🖼️ Simplified Image Endpoint (NEW!)
+
+A simpler endpoint specifically for image processing. Perfect for Line OA webhooks and receipt scanning.
+
+### Endpoint
+
+```
+POST https://aiapi-2t4ecfkxh-jaturapornchais-projects.vercel.app/api/image
+```
+
+### Request Parameters
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `image_base64` | string | ⭐ | Base64-encoded image data |
+| `image_url` | string | ⭐ | URL to fetch image from |
+| `mime_type` | string | ❌ | Image MIME type (default: `image/jpeg`) |
+| `prompt` | string | ❌ | Text prompt (default: "What is in this image?") |
+| `system_prompt` | string | ❌ | System instruction for the model |
+| `model` | string | ❌ | Model name (default: `gemini-2.5-flash-lite`) |
+
+⭐ = ต้องมีอย่างน้อย 1 อย่าง (`image_base64` หรือ `image_url`)
+
+### Response
+
+Returns simplified response:
+
+```json
+{
+  "text": "The response text from Gemini"
+}
+```
+
+Or on error:
+
+```json
+{
+  "error": "Error message"
+}
+```
+
+### Example: With Base64
+
+```bash
+curl -X POST https://aiapi-2t4ecfkxh-jaturapornchais-projects.vercel.app/api/image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_base64": "BASE64_ENCODED_IMAGE_HERE",
+    "prompt": "Extract transaction details from this receipt"
+  }'
+```
+
+### Example: With URL
+
+```bash
+curl -X POST https://aiapi-2t4ecfkxh-jaturapornchais-projects.vercel.app/api/image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_url": "https://example.com/receipt.jpg",
+    "prompt": "Analyze this receipt and extract: store name, date, items, total",
+    "system_prompt": "You are a receipt analyzer. Return JSON with structured data."
+  }'
+```
+
+### Go Example (Line OA Webhook)
+
+```go
+type ImageRequest struct {
+    ImageURL     string `json:"image_url"`
+    Prompt       string `json:"prompt"`
+    SystemPrompt string `json:"system_prompt"`
+}
+
+type ImageResponse struct {
+    Text  string `json:"text"`
+    Error string `json:"error"`
+}
+
+func processReceiptImage(imageURL string) (string, error) {
+    reqBody := ImageRequest{
+        ImageURL: imageURL,
+        Prompt:   "Extract transaction details from this receipt as JSON",
+        SystemPrompt: "You are a receipt analyzer. Extract and return JSON with: store, date, items, total",
+    }
+    
+    jsonData, _ := json.Marshal(reqBody)
+    
+    resp, err := http.Post(
+        "https://aiapi-2t4ecfkxh-jaturapornchais-projects.vercel.app/api/image",
+        "application/json",
+        bytes.NewBuffer(jsonData),
+    )
+    if err != nil {
+        return "", err
+    }
+    defer resp.Body.Close()
+    
+    var result ImageResponse
+    json.NewDecoder(resp.Body).Decode(&result)
+    
+    if result.Error != "" {
+        return "", fmt.Errorf(result.Error)
+    }
+    
+    return result.Text, nil
+}
+```
+
+---
+
+## 🔢 Embedding Endpoint (Vector Search)
+
+Generate text embeddings for semantic search using MongoDB Atlas Vector Search.
+
+### Endpoint
+
+```
+POST https://aiapi-e4y6ekwr1-jaturapornchais-projects.vercel.app/api/embed
+```
+
+### Request Parameters
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | ⭐ | Text to generate embedding for |
+
+### Response
+
+```json
+{
+  "embedding": [0.123, -0.456, 0.789, ...],  // 768-dimensional vector
+  "model": "text-embedding-004"
+}
+```
+
+### Example: cURL
+
+```bash
+curl -X POST https://aiapi-e4y6ekwr1-jaturapornchais-projects.vercel.app/api/embed \
+  -H "Content-Type: application/json" \
+  -d '{"text": "กินข้าว 50 บาท หมวดอาหาร"}'
+```
+
+### Example: Go
+
+```go
+type EmbeddingRequest struct {
+    Text string `json:"text"`
+}
+
+type EmbeddingResponse struct {
+    Embedding []float32 `json:"embedding"`
+    Error     string    `json:"error,omitempty"`
+}
+
+func generateEmbedding(text string) ([]float32, error) {
+    reqBody := EmbeddingRequest{Text: text}
+    jsonData, _ := json.Marshal(reqBody)
+
+    resp, err := http.Post(
+        "https://aiapi-e4y6ekwr1-jaturapornchais-projects.vercel.app/api/embed",
+        "application/json",
+        bytes.NewBuffer(jsonData),
+    )
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var result EmbeddingResponse
+    json.NewDecoder(resp.Body).Decode(&result)
+
+    return result.Embedding, nil
+}
+```
+
+---
+
 ## ⚠️ Notes
 
 - ✅ CORS enabled - call from browser
 - ✅ 100% Gemini API compatible
 - ✅ Supports function calling, multi-turn, system instructions
 - ✅ Returns full Gemini response with usage metadata
+- ✅ **NEW:** Simplified `/api/image` endpoint for easy image processing
+- ✅ **NEW:** `/api/embed` endpoint for vector embeddings
+

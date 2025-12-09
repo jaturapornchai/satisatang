@@ -17,7 +17,8 @@
       "Bash(npx vercel:*)",
       "Bash(vercel env:*)",
       "Bash(printf:*)",
-      "Bash(git -C \"c:\\git\\satisatang\" status)"
+      "Bash(git -C \"c:\\git\\satisatang\" status)",
+      "Bash(go test:*)"
     ],
     "deny": [],
     "ask": []

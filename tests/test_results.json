@@ -1,0 +1,895 @@
+[
+  {
+    "id": 1,
+    "input": "กินข้าว 50",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":50,\"category\":\"อาหาร\",\"description\":\"ข้าว\",\"usetype\":0}],\"message\":\"บันทึกค่าอาหาร 50 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 2,
+    "input": "กินก๋วยเตี๋ยว 45 บาท",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":45,\"category\":\"อาหาร\",\"description\":\"ก๋วยเตี๋ยว\",\"usetype\":0}],\"message\":\"บันทึกค่าอาหาร 45 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 3,
+    "input": "ซื้อกาแฟ 65",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":65,\"category\":\"อาหาร\",\"description\":\"กาแฟ\",\"usetype\":0}],\"message\":\"บันทึกค่าอาหาร 65 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 4,
+    "input": "มื้อเที่ยง 120",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":120,\"category\":\"อาหาร\",\"description\":\"มื้อเที่ยง\",\"usetype\":0}],\"message\":\"บันทึกค่าอาหาร 120 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 5,
+    "input": "อาหารเย็น 200 บัตร KTC",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":200,\"category\":\"อาหาร\",\"description\":\"อาหารเย็น\",\"usetype\":1,\"creditcardname\":\"KTC\"}],\"message\":\"บันทึกค่าอาหารเย็น 200 บาท (บัตร KTC)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 6,
+    "input": "เติมน้ำมัน 1500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":1500,\"category\":\"เดินทาง\",\"description\":\"น้ำมัน\",\"usetype\":0}],\"message\":\"บันทึกค่าน้ำมัน 1,500 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 7,
+    "input": "ค่าแท็กซี่ 150",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 150,\n      \"category\": \"เดินทาง\",\n      \"description\": \"ค่าแท็กซี่\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าเดินทาง 150 บาท (ค่าแท็กซี่)\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 8,
+    "input": "Grab 89",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":89,\"category\":\"เดินทาง\",\"description\":\"Grab\",\"usetype\":0}],\"message\":\"บันทึกค่าเดินทาง 89 บาท (Grab)\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 9,
+    "input": "ค่า BTS 42",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":42,\"category\":\"เดินทาง\",\"description\":\"BTS\",\"usetype\":0}],\"message\":\"บันทึกค่าเดินทาง 42 บาท (BTS)\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 10,
+    "input": "ค่ารถเมล์ 15",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":15,\"category\":\"เดินทาง\",\"description\":\"รถเมล์\",\"usetype\":0}],\"message\":\"บันทึกค่าเดินทาง 15 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 11,
+    "input": "ค่าเช่าบ้าน 8000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 8000,\n      \"category\": \"ที่อยู่\",\n      \"description\": \"ค่าเช่าบ้าน\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าเช่าบ้าน 8,000 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 12,
+    "input": "ผ่อนคอนโด 15000 ตัดกรุงไทย",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":15000,\"category\":\"ที่อยู่\",\"description\":\"ผ่อนคอนโด\",\"usetype\":2,\"bankname\":\"กรุงไทย\"}],\"message\":\"บันทึกค่าผ่อนคอนโด 15,000 บาท (กรุงไทย)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 13,
+    "input": "ค่าน้ำ 250",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":250,\"category\":\"ค่าน้ำ\",\"description\":\"ค่าน้ำ\",\"usetype\":0}],\"message\":\"บันทึกค่าน้ำ 250 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 14,
+    "input": "ค่าไฟ 1200",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":1200,\"category\":\"ค่าไฟ\",\"usetype\":2,\"bankname\":\"กสิกร\"}],\"message\":\"บันทึกค่าไฟ 1,200 บาท (กสิกร)\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 15,
+    "input": "ค่าเน็ต 599",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":599,\"category\":\"อินเทอร์เน็ต\",\"description\":\"ค่าเน็ต\",\"usetype\":0}],\"message\":\"บันทึกค่าอินเทอร์เน็ต 599 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 16,
+    "input": "ค่ามือถือ 299",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "error": "category: expected อินเทอร์เน็ต, got อื่นๆ",
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":299,\"category\":\"อื่นๆ\",\"description\":\"ค่ามือถือ\",\"usetype\":0}],\"message\":\"บันทึกค่ามือถือ 299 บาท\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 17,
+    "input": "ซื้อเสื้อ 590",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 590,\n      \"category\": \"ช้อปปิ้ง\",\n      \"description\": \"เสื้อ\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าช้อปปิ้ง 590 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 18,
+    "input": "ซื้อรองเท้า 1990 บัตร CITI",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":1990,\"category\":\"ช้อปปิ้ง\",\"description\":\"รองเท้า\",\"usetype\":1,\"creditcardname\":\"CITI\"}],\"message\":\"บันทึกค่าช้อปปิ้ง 1,990 บาท (บัตร CITI)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 19,
+    "input": "Lazada 500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":500,\"category\":\"ช้อปปิ้ง\",\"description\":\"Lazada\",\"usetype\":0}],\"message\":\"บันทึกค่าช้อปปิ้ง 500 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 20,
+    "input": "Shopee 350 ตัด SCB",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 350,\n      \"category\": \"ช้อปปิ้ง\",\n      \"description\": \"Shopee\",\n      \"usetype\": 2,\n      \"bankname\": \"SCB\"\n    }\n  ],\n  \"message\": \"บันทึกค่าช้อปปิ้ง 350 บาท (Shopee, SCB)\"\n}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 21,
+    "input": "ดูหนัง 280",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":280,\"category\":\"บันเทิง\",\"description\":\"ดูหนัง\",\"usetype\":0}],\"message\":\"บันทึกค่าบันเทิง 280 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 22,
+    "input": "Netflix 419",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":419,\"category\":\"บันเทิง\",\"description\":\"Netflix\",\"usetype\":0}],\"message\":\"บันทึกค่าบันเทิง 419 บาท (Netflix)\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 23,
+    "input": "Spotify 129",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":129,\"category\":\"บันเทิง\",\"description\":\"Spotify\",\"usetype\":0}],\"message\":\"บันทึกค่าบันเทิง 129 บาท (Spotify)\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 24,
+    "input": "ค่ายา 350",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":350,\"category\":\"สุขภาพ\",\"description\":\"ยา\",\"usetype\":0}],\"message\":\"บันทึกค่าสุขภาพ 350 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 25,
+    "input": "ค่าหมอ 500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 500,\n      \"category\": \"สุขภาพ\",\n      \"description\": \"ค่าหมอ\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าหมอ 500 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 26,
+    "input": "ค่าประกันสุขภาพ 1200",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 1200,\n      \"category\": \"ประกัน\",\n      \"description\": \"ค่าประกันสุขภาพ\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าประกัน 1,200 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 27,
+    "input": "ค่าเรียนภาษา 3000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 3000,\n      \"category\": \"การศึกษา\",\n      \"description\": \"ค่าเรียนภาษา\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าเรียนภาษา 3,000 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 28,
+    "input": "ซื้อหนังสือ 350",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 350,\n      \"category\": \"การศึกษา\",\n      \"description\": \"หนังสือ\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าหนังสือ 350 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 29,
+    "input": "ค่าน้ำยาซักผ้า 199",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":199,\"category\":\"ของใช้\",\"description\":\"น้ำยาซักผ้า\",\"usetype\":0}],\"message\":\"บันทึกค่าของใช้ 199 บาท (น้ำยาซักผ้า)\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 30,
+    "input": "ซื้อกระดาษทิชชู่ 89",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 89,\n      \"category\": \"ของใช้\",\n      \"description\": \"กระดาษทิชชู่\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าของใช้ 89 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 31,
+    "input": "ทำบุญ 100",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 100,\n      \"category\": \"บริจาค\",\n      \"description\": \"ทำบุญ\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าทำบุญ 100 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 32,
+    "input": "บริจาค 500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":500,\"category\":\"บริจาค\",\"description\":\"บริจาค\",\"usetype\":0}],\"message\":\"บันทึกค่าบริจาค 500 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 33,
+    "input": "เงินเดือน 30000 เข้ากรุงไทย",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"income\",\"amount\":30000,\"category\":\"เงินเดือน\",\"description\":\"เงินเดือน\",\"usetype\":2,\"bankname\":\"กรุงไทย\"}],\"message\":\"บันทึกเงินเดือน 30,000 บาท (กรุงไทย)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 34,
+    "input": "ได้โบนัส 50000 เข้า SCB",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"income\",\n      \"amount\": 50000,\n      \"category\": \"โบนัส\",\n      \"description\": \"โบนัส\",\n      \"usetype\": 2,\n      \"bankname\": \"SCB\"\n    }\n  ],\n  \"message\": \"บันทึกโบนัส 50,000 บาท (SCB)\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 35,
+    "input": "ได้เงินสด 500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"income\",\"amount\":500,\"category\":\"อื่นๆ\",\"description\":\"ได้เงิน\",\"usetype\":0}],\"message\":\"บันทึกรายรับ 500 บาท (เงินสด)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 36,
+    "input": "รายได้เสริม 2000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"income\",\"amount\":2000,\"category\":\"รายได้เสริม\",\"description\":\"รายได้เสริม\",\"usetype\":0}],\"message\":\"บันทึกรายได้เสริม 2,000 บาท\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 37,
+    "input": "ขายของได้ 1500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"income\",\n      \"amount\": 1500,\n      \"category\": \"รายได้เสริม\",\n      \"description\": \"ขายของ\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกรายรับ 1,500 บาท (ขายของ)\"\n}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 38,
+    "input": "ดอกเบี้ย 50 เข้ากสิกร",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"income\",\n      \"amount\": 50,\n      \"category\": \"ดอกเบี้ย\",\n      \"description\": \"ดอกเบี้ย\",\n      \"usetype\": 2,\n      \"bankname\": \"กสิกร\"\n    }\n  ],\n  \"message\": \"บันทึกดอกเบี้ย 50 บาท (กสิกร)\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 39,
+    "input": "ได้เงินคืนภาษี 5000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"income\",\"amount\":5000,\"category\":\"คืนเงิน\",\"description\":\"เงินคืนภาษี\",\"usetype\":0}],\"message\":\"บันทึกรายรับ 5,000 บาท (เงินคืนภาษี)\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 40,
+    "input": "เงินปันผล 1200",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"income\",\n      \"amount\": 1200,\n      \"category\": \"เงินปันผล\",\n      \"description\": \"เงินปันผล\",\n      \"usetype\": -1\n    }\n  ],\n  \"message\": \"บันทึกเงินปันผล 1,200 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 41,
+    "input": "ยอดคงเหลือ",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"balance\",\n  \"query\": {\n    \"group_by\": \"payment\"\n  },\n  \"message\": \"ยอดคงเหลือทั้งหมด\"\n}\n```"
+  },
+  {
+    "id": 42,
+    "input": "เงินเหลือเท่าไหร่",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\"action\":\"balance\",\"query\":{\"group_by\":\"payment\"},\"message\":\"ยอดคงเหลือทั้งหมด\"}\n```"
+  },
+  {
+    "id": 43,
+    "input": "ยอดเงินสด",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\"action\":\"balance\",\"query\":{\"usetype\":0},\"message\":\"ยอดเงินสด\"}\n```"
+  },
+  {
+    "id": 44,
+    "input": "ยอด SCB",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"balance\",\n  \"query\": {\n    \"usetype\": 2,\n    \"bankname\": \"SCB\"\n  },\n  \"message\": \"ยอด SCB\"\n}\n```"
+  },
+  {
+    "id": 45,
+    "input": "ยอดกรุงไทย",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\"action\":\"balance\",\"query\":{\"usetype\":2,\"bankname\":\"กรุงไทย\"},\"message\":\"ยอดกรุงไทย\"}\n```"
+  },
+  {
+    "id": 46,
+    "input": "หนี้บัตรเครดิต",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"balance\",\n  \"query\": {\n    \"usetype\": 1\n  },\n  \"message\": \"ยอดหนี้บัตรเครดิต\"\n}\n```"
+  },
+  {
+    "id": 47,
+    "input": "ยอดบัตร KTC",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"balance\",\n  \"query\": {\n    \"usetype\": 1,\n    \"creditcardname\": \"KTC\"\n  },\n  \"message\": \"ยอดบัตร KTC\"\n}\n```"
+  },
+  {
+    "id": 48,
+    "input": "เงินในธนาคารเท่าไหร่",
+    "expected": "balance",
+    "got": "balance",
+    "pass": true,
+    "response": "```json\n{\"action\":\"balance\",\"query\":{\"usetype\":2},\"message\":\"ยอดในธนาคาร\"}\n```"
+  },
+  {
+    "id": 49,
+    "input": "สรุปวันนี้",
+    "expected": "analyze",
+    "got": "analyze",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"analyze\",\n  \"query\": {\n    \"days\": 1,\n    \"group_by\": \"category\"\n  },\n  \"message\": \"สรุปรายจ่ายวันนี้\"\n}\n```"
+  },
+  {
+    "id": 50,
+    "input": "สรุปสัปดาห์นี้",
+    "expected": "analyze",
+    "got": "analyze",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"analyze\",\n  \"query\": {\n    \"days\": 7,\n    \"group_by\": \"category\"\n  },\n  \"message\": \"สรุปรายจ่ายสัปดาห์นี้\"\n}\n```"
+  },
+  {
+    "id": 51,
+    "input": "สรุปเดือนนี้",
+    "expected": "analyze",
+    "got": "analyze",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"analyze\",\n  \"query\": {\n    \"days\": 30,\n    \"group_by\": \"category\"\n  },\n  \"message\": \"สรุปรายจ่ายเดือนนี้\"\n}\n```"
+  },
+  {
+    "id": 52,
+    "input": "สรุปรายจ่าย",
+    "expected": "analyze",
+    "got": "analyze",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"analyze\",\n  \"query\": {\n    \"type\": \"expense\",\n    \"days\": 30,\n    \"group_by\": \"category\"\n  },\n  \"message\": \"สรุปรายจ่าย 30 วันล่าสุดตามหมวดหมู่\"\n}\n```"
+  },
+  {
+    "id": 53,
+    "input": "ใช้จ่ายอะไรไปบ้าง",
+    "expected": "search",
+    "got": "search",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"search\",\n  \"query\": {\n    \"type\": \"expense\",\n    \"days\": 7\n  },\n  \"message\": \"รายการใช้จ่าย 7 วันล่าสุด\"\n}\n```"
+  },
+  {
+    "id": 54,
+    "input": "จ่ายอะไรวันนี้",
+    "expected": "search",
+    "got": "search",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"search\",\n  \"query\": {\n    \"type\": \"expense\",\n    \"days\": 1\n  },\n  \"message\": \"รายการรายจ่ายวันนี้\"\n}\n```"
+  },
+  {
+    "id": 55,
+    "input": "เคยกินอะไรบ้าง",
+    "expected": "search",
+    "got": "search",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"search\",\n  \"query\": {\n    \"categories\": [\n      \"อาหาร\"\n    ],\n    \"days\": 30\n  },\n  \"message\": \"รายการอาหาร 30 วันล่าสุด\"\n}\n```"
+  },
+  {
+    "id": 56,
+    "input": "ค่าเดินทางเดือนนี้",
+    "expected": "search",
+    "got": "analyze",
+    "pass": false,
+    "error": "action: expected search, got analyze",
+    "response": "```json\n{\"action\":\"analyze\",\"query\":{\"categories\":[\"เดินทาง\"],\"days\":30,\"group_by\":\"category\"},\"message\":\"ค่าเดินทางเดือนนี้\"}\n```"
+  },
+  {
+    "id": 57,
+    "input": "รายจ่ายอาหาร 7 วันล่าสุด",
+    "expected": "search",
+    "got": "search",
+    "pass": true,
+    "response": "```json\n{\"action\":\"search\",\"query\":{\"type\":\"expense\",\"categories\":[\"อาหาร\"],\"days\":7},\"message\":\"รายการอาหาร 7 วันล่าสุด\"}\n```"
+  },
+  {
+    "id": 58,
+    "input": "โอน 5000 จากกรุงไทยไปกรุงเทพ",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"transfer\",\n  \"transfer\": {\n    \"from\": [\n      {\n        \"amount\": 5000,\n        \"usetype\": 2,\n        \"bankname\": \"กรุงไทย\"\n      }\n    ],\n    \"to\": [\n      {\n        \"amount\": 5000,\n        \"usetype\": 2,\n        \"bankname\": \"กรุงเทพ\"\n      }\n    ],\n    \"description\": \"โอนเงิน\"\n  },\n  \"message\": \"โอน 5,000 บาท จากกรุงไทย → กรุงเทพ\"\n}\n```"
+  },
+  {
+    "id": 59,
+    "input": "โอนเงิน 3000 จาก SCB ไปกสิกร",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"transfer\",\n  \"transfer\": {\n    \"from\": [\n      {\n        \"amount\": 3000,\n        \"usetype\": 2,\n        \"bankname\": \"SCB\"\n      }\n    ],\n    \"to\": [\n      {\n        \"amount\": 3000,\n        \"usetype\": 2,\n        \"bankname\": \"กสิกร\"\n      }\n    ],\n    \"description\": \"โอนเงิน\"\n  },\n  \"message\": \"โอน 3,000 บาท จาก SCB → กสิกร\"\n}\n```"
+  },
+  {
+    "id": 60,
+    "input": "ฝากเงิน 10000 เข้ากรุงไทย",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\"action\":\"transfer\",\"transfer\":{\"from\":[{\"amount\":10000,\"usetype\":0}],\"to\":[{\"amount\":10000,\"usetype\":2,\"bankname\":\"กรุงไทย\"}],\"description\":\"ฝากเงิน\"},\"message\":\"ฝากเงิน 10,000 บาท เข้ากรุงไทย\"}\n```"
+  },
+  {
+    "id": 61,
+    "input": "ฝาก 5000 เข้า SCB",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\"action\":\"transfer\",\"transfer\":{\"from\":[{\"amount\":5000,\"usetype\":0}],\"to\":[{\"amount\":5000,\"usetype\":2,\"bankname\":\"SCB\"}],\"description\":\"ฝากเงิน\"},\"message\":\"ฝากเงิน 5,000 บาท เข้า SCB\"}\n```"
+  },
+  {
+    "id": 62,
+    "input": "ถอนเงิน 3000 จากกสิกร",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"transfer\",\n  \"transfer\": {\n    \"from\": [\n      {\n        \"amount\": 3000,\n        \"usetype\": 2,\n        \"bankname\": \"กสิกร\"\n      }\n    ],\n    \"to\": [\n      {\n        \"amount\": 3000,\n        \"usetype\": 0\n      }\n    ],\n    \"description\": \"ถอนเงิน\"\n  },\n  \"message\": \"ถอนเงิน 3,000 บาท จากกสิกร\"\n}\n```"
+  },
+  {
+    "id": 63,
+    "input": "ถอน 2000 จาก SCB",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"transfer\",\n  \"transfer\": {\n    \"from\": [\n      {\n        \"amount\": 2000,\n        \"usetype\": 2,\n        \"bankname\": \"SCB\"\n      }\n    ],\n    \"to\": [\n      {\n        \"amount\": 2000,\n        \"usetype\": 0\n      }\n    ],\n    \"description\": \"ถอนเงิน\"\n  },\n  \"message\": \"ถอนเงิน 2,000 บาท จาก SCB\"\n}\n```"
+  },
+  {
+    "id": 64,
+    "input": "จ่ายบัตร KTC 5000 โอนจากกรุงไทย",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\"action\":\"transfer\",\"transfer\":{\"from\":[{\"amount\":5000,\"usetype\":2,\"bankname\":\"กรุงไทย\"}],\"to\":[{\"amount\":5000,\"usetype\":1,\"creditcardname\":\"KTC\"}],\"description\":\"จ่ายบัตรเครดิต\"},\"message\":\"จ่ายบัตร KTC 5,000 บาท จากกรุงไทย\"}\n```"
+  },
+  {
+    "id": 65,
+    "input": "จ่ายบัตรเครดิต CITI 3000 จาก SCB",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"transfer\",\n  \"transfer\": {\n    \"from\": [\n      {\n        \"amount\": 3000,\n        \"usetype\": 2,\n        \"bankname\": \"SCB\"\n      }\n    ],\n    \"to\": [\n      {\n        \"amount\": 3000,\n        \"usetype\": 1,\n        \"creditcardname\": \"CITI\"\n      }\n    ],\n    \"description\": \"จ่ายบัตรเครดิต\"\n  },\n  \"message\": \"จ่ายบัตรเครดิต CITI 3,000 บาท จาก SCB\"\n}\n```"
+  },
+  {
+    "id": 66,
+    "input": "ไม่ใช่ 50 เป็น 100",
+    "expected": "update",
+    "got": "update",
+    "pass": true,
+    "response": "```json\n{\"action\":\"update\",\"update_field\":\"amount\",\"update_value\":100,\"message\":\"แก้ไขจำนวนเงินเป็น 100 บาท\"}\n```"
+  },
+  {
+    "id": 67,
+    "input": "แก้เป็น 200",
+    "expected": "update",
+    "got": "update",
+    "pass": true,
+    "response": "```json\n{\"action\":\"update\",\"update_field\":\"amount\",\"update_value\":200,\"message\":\"แก้ไขจำนวนเงินเป็น 200 บาท\"}\n```"
+  },
+  {
+    "id": 68,
+    "input": "จ่ายบัตร KTC",
+    "expected": "update",
+    "got": "update",
+    "pass": true,
+    "response": "```json\n{\"action\":\"update\",\"update_field\":\"usetype\",\"update_value\":{\"usetype\":1,\"creditcardname\":\"KTC\"},\"message\":\"แก้ไขเป็นจ่ายบัตร KTC\"}\n```"
+  },
+  {
+    "id": 69,
+    "input": "เปลี่ยนเป็นตัด SCB",
+    "expected": "update",
+    "got": "update",
+    "pass": true,
+    "response": "```json\n{\"action\":\"update\",\"update_field\":\"usetype\",\"update_value\":{\"usetype\":2,\"bankname\":\"SCB\"},\"message\":\"แก้ไขเป็นการตัดจาก SCB\"}\n```"
+  },
+  {
+    "id": 70,
+    "input": "จ่ายเงินสดนะ",
+    "expected": "update",
+    "got": "new",
+    "pass": false,
+    "error": "action: expected update, got new",
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 0,\n      \"category\": \"อื่นๆ\",\n      \"description\": \"จ่ายเงินสด\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกรายการจ่ายเงินสด\"\n}\n```"
+  },
+  {
+    "id": 71,
+    "input": "สวัสดี",
+    "expected": "chat",
+    "got": "chat",
+    "pass": true,
+    "response": "```json\n{\"action\":\"chat\",\"message\":\"สวัสดีค่ะ! ฉันคือสติสตางค์ ผู้ช่วยจัดการการเงิน บอกได้เลยว่าจะบันทึกอะไรค่ะ\"}\n```"
+  },
+  {
+    "id": 72,
+    "input": "ขอบคุณ",
+    "expected": "chat",
+    "got": "chat",
+    "pass": true,
+    "response": "```json\n{\"action\":\"chat\",\"message\":\"ยินดีค่ะ! มีอะไรให้ช่วยอีกไหมคะ\"}\n```"
+  },
+  {
+    "id": 73,
+    "input": "ช่วยอะไรได้บ้าง",
+    "expected": "chat",
+    "got": "chat",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"chat\",\n  \"message\": \"สวัสดีค่ะ! ฉันคือสติสตางค์ ผู้ช่วยจัดการการเงิน ดิฉันสามารถช่วยคุณได้หลายอย่าง เช่น:\\n\\n*   **บันทึกรายการ:** รายรับ, รายจ่าย, โอน/ฝาก/ถอน\\n*   **ดูยอดคงเหลือ:** สรุปยอดเงินสด, บัญชีธนาคาร, บัตรเครดิต\\n*   **ค้นหา/วิเคราะห์:** ค้นหารายการย้อนหลัง, สรุปรายจ่าย/รายรับตามหมวดหมู่หรือช่วงเวลา\\n*   **ตั้งงบประมาณ:** วางแผนการใช้จ่าย\\n*   **ส่งออกข้อมูล:** เพื่อนำไปวิเคราะห์ต่อ\\n\\nคุณต้องการให้ฉันช่วยอะไรเป็นพิเศษไหมคะ?\"\n}\n```"
+  },
+  {
+    "id": 74,
+    "input": "ทำอะไรได้บ้าง",
+    "expected": "chat",
+    "got": "chat",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"chat\",\n  \"message\": \"ฉันคือสติสตางค์ ผู้ช่วยจัดการการเงินค่ะ ฉันสามารถช่วยคุณในเรื่องต่อไปนี้:\\n\\n- **บันทึกรายการใหม่ (`new`)**: เช่น บันทึกรายรับ-รายจ่าย, บันทึกการใช้บัตรเครดิต, การใช้เงินสด\\n- **ดูยอดคงเหลือ (`balance`)**: ตรวจสอบยอดเงินในบัญชี, เงินสด, หรือหนี้บัตรเครดิต\\n- **ค้นหารายการ (`search`)**: ค้นหารายการตามหมวดหมู่, ช่วงเวลา, หรือคำค้นหา\\n- **วิเคราะห์/สรุป (`analyze`)**: สรุปรายรับ-รายจ่ายตามหมวดหมู่ หรือช่วงเวลา\\n- **โอน/ฝาก/ถอน (`transfer`)**: บันทึกการโอนเงินระหว่างบัญชี, ฝากเงิน, หรือถอนเงิน\\n- **ตั้งงบประมาณ (`budget`)**: ช่วยคุณตั้งและติดตามงบประมาณ\\n- **แก้ไขรายการล่าสุด (`update`)**: แก้ไขข้อมูลของรายการล่าสุดที่คุณบันทึก\\n- **ส่งออกข้อมูล (`export`)**: ส่งออกข้อมูลการเงินของคุณ\\n\\nมีอะไรให้ฉันช่วยวันนี้คะ?\"\n}\n```"
+  },
+  {
+    "id": 75,
+    "input": "หวัดดี",
+    "expected": "chat",
+    "got": "chat",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"chat\",\n  \"message\": \"สวัสดีค่ะ! ฉันคือสติสตางค์ ผู้ช่วยจัดการการเงิน บอกได้เลยว่าจะบันทึกอะไรค่ะ\"\n}\n```"
+  },
+  {
+    "id": 76,
+    "input": "ซื้อทอง 15000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":15000,\"category\":\"อื่นๆ\",\"description\":\"ทอง\",\"usetype\":0}],\"message\":\"บันทึกการซื้อทอง 15,000 บาท\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 77,
+    "input": "ซื้อ Bitcoin 5000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":5000,\"category\":\"อื่นๆ\",\"description\":\"Bitcoin\",\"usetype\":0}],\"message\":\"บันทึกค่าใช้จ่าย 5,000 บาท (Bitcoin)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 78,
+    "input": "ซื้อหุ้น 10000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 10000,\n      \"category\": \"อื่นๆ\",\n      \"description\": \"ซื้อหุ้น\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกการซื้อหุ้น 10,000 บาท\"\n}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 79,
+    "input": "ขายทอง 20000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"income\",\"amount\":20000,\"category\":\"อื่นๆ\",\"description\":\"ขายทอง\",\"usetype\":0}],\"message\":\"บันทึกรายรับ 20,000 บาท (ขายทอง)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 80,
+    "input": "กินบุฟเฟต์ 599 บัตร KTC",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":599,\"category\":\"อาหาร\",\"description\":\"บุฟเฟต์\",\"usetype\":1,\"creditcardname\":\"KTC\"}],\"message\":\"บันทึกค่าอาหาร 599 บาท (บัตร KTC)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 81,
+    "input": "ค่าประกันรถ 8000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":8000,\"category\":\"ประกัน\",\"description\":\"ค่าประกันรถ\",\"usetype\":0}],\"message\":\"บันทึกค่าประกัน 8,000 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 82,
+    "input": "ต่อทะเบียนรถ 1200",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 1200,\n      \"category\": \"อื่นๆ\",\n      \"description\": \"ต่อทะเบียนรถ\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่าต่อทะเบียนรถ 1,200 บาท\"\n}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 83,
+    "input": "ค่าซ่อมรถ 3500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":3500,\"category\":\"เดินทาง\",\"description\":\"ค่าซ่อมรถ\",\"usetype\":0}],\"message\":\"บันทึกค่าเดินทาง 3,500 บาท (ค่าซ่อมรถ)\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 84,
+    "input": "ซื้อของฝาก 800",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":800,\"category\":\"ช้อปปิ้ง\",\"description\":\"ของฝาก\",\"usetype\":0}],\"message\":\"บันทึกค่าช้อปปิ้ง 800 บาท\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 85,
+    "input": "ค่าตัดผม 200",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":200,\"category\":\"อื่นๆ\",\"description\":\"ตัดผม\",\"usetype\":0}],\"message\":\"บันทึกค่าตัดผม 200 บาท\"}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 86,
+    "input": "โอน 2000 จากเงินสดไปกรุงไทย",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"transfer\",\n  \"transfer\": {\n    \"from\": [\n      {\n        \"amount\": 2000,\n        \"usetype\": 0\n      }\n    ],\n    \"to\": [\n      {\n        \"amount\": 2000,\n        \"usetype\": 2,\n        \"bankname\": \"กรุงไทย\"\n      }\n    ],\n    \"description\": \"โอนเงิน\"\n  },\n  \"message\": \"โอน 2,000 บาท จากเงินสด → กรุงไทย\"\n}\n```"
+  },
+  {
+    "id": 87,
+    "input": "ถอนเงินสด 5000 จาก ATM กสิกร",
+    "expected": "transfer",
+    "got": "transfer",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"transfer\",\n  \"transfer\": {\n    \"from\": [\n      {\n        \"amount\": 5000,\n        \"usetype\": 2,\n        \"bankname\": \"กสิกร\"\n      }\n    ],\n    \"to\": [\n      {\n        \"amount\": 5000,\n        \"usetype\": 0\n      }\n    ],\n    \"description\": \"ถอนเงินสด\"\n  },\n  \"message\": \"ถอนเงินสด 5,000 บาท จาก ATM กสิกร\"\n}\n```"
+  },
+  {
+    "id": 88,
+    "input": "จ่ายค่าเทอม 25000",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\"action\":\"new\",\"transactions\":[{\"type\":\"expense\",\"amount\":25000,\"category\":\"การศึกษา\",\"description\":\"ค่าเทอม\",\"usetype\":0}],\"message\":\"บันทึกค่าการศึกษา 25,000 บาท\"}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 89,
+    "input": "ค่ารักษาพยาบาล 1500",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 1500,\n      \"category\": \"สุขภาพ\",\n      \"description\": \"ค่ารักษาพยาบาล\",\n      \"usetype\": 0\n    }\n  ],\n  \"message\": \"บันทึกค่ารักษาพยาบาล 1,500 บาท\"\n}\n```",
+    "category_pass": true,
+    "type_pass": true
+  },
+  {
+    "id": 90,
+    "input": "ซื้อโทรศัพท์ใหม่ 25000 ผ่อน 10 เดือน",
+    "expected": "new",
+    "got": "new",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"new\",\n  \"transactions\": [\n    {\n      \"type\": \"expense\",\n      \"amount\": 25000,\n      \"category\": \"ช้อปปิ้ง\",\n      \"description\": \"โทรศัพท์ใหม่\",\n      \"usetype\": 1,\n      \"creditcardname\": \"บัตรผ่อน 10 เดือน\"\n    }\n  ],\n  \"message\": \"บันทึกค่าช้อปปิ้ง 25,000 บาท (ผ่อน 10 เดือน)\"\n}\n```",
+    "type_pass": true
+  },
+  {
+    "id": 91,
+    "input": "วันนี้ใช้ไปเท่าไหร่",
+    "expected": "analyze",
+    "got": "search",
+    "pass": false,
+    "error": "action: expected analyze, got search",
+    "response": "```json\n{\n  \"action\": \"search\",\n  \"query\": {\n    \"type\": \"expense\",\n    \"days\": 1\n  },\n  \"message\": \"รายจ่ายของวันนี้\"\n}\n```"
+  },
+  {
+    "id": 92,
+    "input": "เดือนนี้ใช้ไปเท่าไหร่แล้ว",
+    "expected": "analyze",
+    "got": "analyze",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"analyze\",\n  \"query\": {\n    \"days\": 30,\n    \"group_by\": \"category\"\n  },\n  \"message\": \"สรุปรายจ่ายเดือนนี้\"\n}\n```"
+  },
+  {
+    "id": 93,
+    "input": "ใช้จ่ายหมวดไหนเยอะสุด",
+    "expected": "analyze",
+    "got": "analyze",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"analyze\",\n  \"query\": {\n    \"days\": 30,\n    \"group_by\": \"category\",\n    \"type\": \"expense\"\n  },\n  \"message\": \"หมวดหมู่ที่ใช้จ่ายเยอะที่สุดใน 30 วันที่ผ่านมา\"\n}\n```"
+  },
+  {
+    "id": 94,
+    "input": "รายรับเดือนนี้",
+    "expected": "search",
+    "got": "analyze",
+    "pass": false,
+    "error": "action: expected search, got analyze",
+    "response": "```json\n{\n  \"action\": \"analyze\",\n  \"query\": {\n    \"type\": \"income\",\n    \"days\": 30,\n    \"group_by\": \"category\"\n  },\n  \"message\": \"สรุปรายรับเดือนนี้\"\n}\n```"
+  },
+  {
+    "id": 95,
+    "input": "รายจ่ายสัปดาห์ที่แล้ว",
+    "expected": "search",
+    "got": "search",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"search\",\n  \"query\": {\n    \"type\": \"expense\",\n    \"days\": 7,\n    \"date_from\": \"2025-12-02\",\n    \"date_to\": \"2025-12-09\"\n  },\n  \"message\": \"รายจ่าย 7 วันล่าสุด (2025-12-02 ถึง 2025-12-09)\"\n}\n```"
+  },
+  {
+    "id": 96,
+    "input": "ดูรายการล่าสุด",
+    "expected": "search",
+    "got": "search",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"search\",\n  \"query\": {\n    \"limit\": 1,\n    \"group_by\": \"none\"\n  },\n  \"message\": \"รายการล่าสุด\"\n}\n```"
+  },
+  {
+    "id": 97,
+    "input": "รายการวันนี้",
+    "expected": "search",
+    "got": "search",
+    "pass": true,
+    "response": "```json\n{\"action\":\"search\",\"query\":{\"days\":0,\"date_to\":\"2025-12-09\",\"date_from\":\"2025-12-09\"},\"message\":\"รายการวันที่ 2025-12-09\"}\n```"
+  },
+  {
+    "id": 98,
+    "input": "กี่บาทแล้ววันนี้",
+    "expected": "analyze",
+    "got": "balance",
+    "pass": false,
+    "error": "action: expected analyze, got balance",
+    "response": "```json\n{\"action\":\"balance\",\"query\":{\"days\":0,\"date_to\":\"2025-12-09\",\"date_from\":\"2025-12-09\"},\"message\":\"ยอดรวมวันนี้\"}\n```"
+  },
+  {
+    "id": 99,
+    "input": "ตั้งงบอาหาร 5000",
+    "expected": "budget",
+    "got": "budget",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"budget\",\n  \"budget\": {\n    \"category\": \"อาหาร\",\n    \"amount\": 5000\n  },\n  \"message\": \"ตั้งงบประมาณค่าอาหาร 5,000 บาท\"\n}\n```"
+  },
+  {
+    "id": 100,
+    "input": "export excel 30 วัน",
+    "expected": "export",
+    "got": "export",
+    "pass": true,
+    "response": "```json\n{\n  \"action\": \"export\",\n  \"query\": {\n    \"days\": 30,\n    \"format\": \"excel\"\n  },\n  \"message\": \"ส่งออกข้อมูล 30 วันล่าสุดในรูปแบบ Excel\"\n}\n```"
+  }
+]
