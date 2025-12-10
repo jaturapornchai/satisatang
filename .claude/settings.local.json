@@ -18,7 +18,9 @@
       "Bash(vercel env:*)",
       "Bash(printf:*)",
       "Bash(git -C \"c:\\git\\satisatang\" status)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(go mod graph:*)",
+      "Bash(go vet:*)"
     ],
     "deny": [],
     "ask": []

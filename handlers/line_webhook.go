@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -111,15 +114,36 @@ func (h *LineWebhookHandler) handleImageMessage(ctx context.Context, source webh
 	}
 	log.Printf("Image content type: %s", contentType)
 
-	transactionData, err := h.ai.ProcessReceiptImage(context.Background(), content.Body, contentType)
+	// Read image data into bytes for both AI processing and storage
+	imageBytes, err := io.ReadAll(content.Body)
 	if err != nil {
-		log.Printf("Failed to process image with Gemini: %v", err)
-		// Use replyToken for error response (free, no quota)
-		h.replyText(replyToken, "ขออภัยค่ะ ไม่สามารถอ่านข้อมูลจากใบเสร็จได้ กรุณาลองใหม่อีกครั้ง")
+		log.Printf("Failed to read image data: %v", err)
+		h.replyText(replyToken, "ขออภัยค่ะ ไม่สามารถอ่านรูปภาพได้")
 		return
 	}
 
-	// Use replyToken for flex message (free, no quota)
+	// Convert to base64 for storage
+	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+	// Process image with AI (using bytes.Reader to allow re-reading)
+	transactionData, err := h.ai.ProcessReceiptImage(context.Background(), bytes.NewReader(imageBytes), contentType)
+	if err != nil {
+		log.Printf("Failed to process image with Gemini: %v", err)
+		h.replyText(replyToken, "ขออภัยค่ะ ไม่สามารถอ่านข้อมูลจากรูปภาพได้ กรุณาลองใหม่อีกครั้ง")
+		return
+	}
+
+	// Store image base64 in transaction data for MongoDB
+	transactionData.ImageBase64 = imageBase64
+	transactionData.ImageMimeType = contentType
+
+	// Check if it's a transfer slip - ask user if income or expense
+	if transactionData.ImageType == "slip" {
+		h.replySlipConfirmFlex(replyToken, userID, transactionData)
+		return
+	}
+
+	// Regular receipt - process directly
 	h.replyTransactionFlex(replyToken, userID, transactionData)
 }
 
@@ -133,6 +157,14 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 	}
 
 	bgCtx := context.Background()
+
+	// Check if user has pending slip waiting for category
+	pendingKey := fmt.Sprintf("slip_pending_%s", userID)
+	if pendingJSON, err := h.mongo.GetTempData(bgCtx, pendingKey); err == nil && pendingJSON != "" {
+		// User typed category for pending slip
+		h.handleSlipCategoryText(bgCtx, replyToken, userID, message.Text, pendingJSON)
+		return
+	}
 
 	// Get last transaction for update reference
 	lastTx, _, _ := h.mongo.GetLastTransaction(bgCtx, userID)
@@ -157,6 +189,12 @@ func (h *LineWebhookHandler) handleTextMessage(ctx context.Context, source webho
 			schema += "|"
 		}
 		schema += "หมวด:" + strings.Join(expenseCategories, ",")
+	}
+
+	// Add balance summary for AI context (important!)
+	balanceSummary := h.buildBalanceSummaryForAI(bgCtx, userID)
+	if balanceSummary != "" {
+		schema += "\n" + balanceSummary
 	}
 
 	// Get chat history (last 20 messages)
@@ -474,7 +512,7 @@ func (h *LineWebhookHandler) queryTransactions(ctx context.Context, userID strin
 		days = 30
 	}
 
-	// Use keyword search if provided
+	// Use keyword search if provided (Regex Only)
 	if query.Keyword != "" {
 		results, _ := h.mongo.SearchTransactions(ctx, userID, query.Keyword, query.Limit)
 		return results
@@ -498,53 +536,164 @@ func (h *LineWebhookHandler) queryTransactions(ctx context.Context, userID strin
 	return results
 }
 
-// replyTransactionsFlex sends flex for new transactions
+// replyTransactionsFlex sends flex for new transactions (carousel: transaction + summary)
 func (h *LineWebhookHandler) replyTransactionsFlex(ctx context.Context, userID, replyToken string, txs []services.TransactionData, msg string) bool {
 	if len(txs) == 0 {
 		return false
 	}
 
 	tx := txs[0]
-	emoji := "💰"
-	color := "#27AE60"
-	typeText := "รายรับ"
-	if tx.Type == "expense" {
-		emoji = getCategoryEmoji(tx.Category)
-		color = "#E74C3C"
-		typeText = "รายจ่าย"
+	emoji := "💸"
+	headerColor := "#E74C3C" // Red for expense
+	typeText := "รายจ่าย"
+	if tx.Type == "income" {
+		emoji = "💰"
+		headerColor = "#27AE60" // Green for income
+		typeText = "รายรับ"
 	}
 
 	// Fallback for empty values
-	category := tx.Category
-	if category == "" {
-		category = typeText
-	}
 	description := tx.Description
 	if description == "" {
-		description = getPaymentName(tx.UseType, tx.BankName, tx.CreditCardName)
+		description = tx.Category
 	}
 	if description == "" {
-		description = category
+		description = typeText
 	}
 
-	contents := []interface{}{
-		map[string]interface{}{"type": "text", "text": emoji + " " + category, "size": "sm", "color": color},
-		map[string]interface{}{"type": "text", "text": formatNumber(tx.Amount), "size": "xl", "weight": "bold", "color": color},
-		map[string]interface{}{"type": "text", "text": description, "size": "xs", "color": "#888888"},
+	// Get date
+	txDate := tx.Date
+	if txDate == "" {
+		txDate = time.Now().Format("2006-01-02")
 	}
 
-	// Add balance summary footer
-	if summary := h.buildBalanceSummaryContents(ctx, userID); summary != nil {
-		contents = append(contents, summary...)
+	// Get payment method text
+	paymentText := getPaymentName(tx.UseType, tx.BankName, tx.CreditCardName)
+	if paymentText == "" {
+		paymentText = "เงินสด"
 	}
 
+	// Get balance summary
+	balances, _ := h.mongo.GetBalanceByPaymentType(ctx, userID)
+	var cashTotal, bankTotal, creditTotal float64
+	for _, b := range balances {
+		switch b.UseType {
+		case 0:
+			cashTotal += b.Balance
+		case 1:
+			creditTotal += b.Balance // Negative = debt
+		case 2:
+			bankTotal += b.Balance
+		}
+	}
+
+	// Assets = cash + bank, Liabilities = credit card debt
+	assets := cashTotal + bankTotal
+	liabilities := 0.0
+	if creditTotal < 0 {
+		liabilities = -creditTotal
+	}
+	equity := assets - liabilities
+
+	// Get income/expense totals
+	var totalIncome, totalExpense float64
+	if summary, err := h.mongo.GetBalanceSummary(ctx, userID); err == nil && summary != nil {
+		totalIncome = summary.TotalIncome
+		totalExpense = summary.TotalExpense
+	}
+
+	// Build body contents - AI message at top, summary at bottom
+	bodyContents := []interface{}{
+		// Transaction detail
+		map[string]interface{}{"type": "text", "text": description, "size": "md", "weight": "bold", "color": "#333333"},
+		map[string]interface{}{"type": "text", "text": formatNumber(tx.Amount), "size": "lg", "weight": "bold", "color": headerColor},
+		map[string]interface{}{
+			"type": "box", "layout": "horizontal", "margin": "sm",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "📅 " + txDate, "size": "xxs", "color": "#888888", "flex": 1},
+				map[string]interface{}{"type": "text", "text": "📎 " + tx.Category, "size": "xxs", "color": "#888888", "flex": 1},
+			},
+		},
+	}
+
+	// Add AI message after transaction detail (activity log at top)
+	if msg != "" {
+		bodyContents = append(bodyContents,
+			map[string]interface{}{"type": "text", "text": msg, "size": "xs", "color": "#666666", "wrap": true, "margin": "sm"},
+		)
+	}
+
+	// Add separator and summary section at bottom
+	bodyContents = append(bodyContents,
+		map[string]interface{}{"type": "separator", "margin": "md"},
+		// Summary section
+		map[string]interface{}{
+			"type": "box", "layout": "horizontal", "margin": "sm",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "💰 ทุน", "size": "xs", "color": "#3498DB", "flex": 1},
+				map[string]interface{}{"type": "text", "text": formatNumber(equity), "size": "xs", "weight": "bold", "color": "#3498DB", "align": "end", "flex": 2},
+			},
+		},
+		map[string]interface{}{
+			"type": "box", "layout": "horizontal",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "🏦 ทรัพย์สิน", "size": "xxs", "color": "#27AE60", "flex": 1},
+				map[string]interface{}{"type": "text", "text": formatNumber(assets), "size": "xxs", "color": "#27AE60", "align": "end", "flex": 2},
+			},
+		},
+		map[string]interface{}{
+			"type": "box", "layout": "horizontal",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "💳 หนี้สิน", "size": "xxs", "color": "#E74C3C", "flex": 1},
+				map[string]interface{}{"type": "text", "text": formatNumber(liabilities), "size": "xxs", "color": "#E74C3C", "align": "end", "flex": 2},
+			},
+		},
+		map[string]interface{}{"type": "separator", "margin": "sm"},
+		map[string]interface{}{
+			"type": "box", "layout": "horizontal", "margin": "sm",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "📈 รายได้", "size": "xxs", "color": "#27AE60", "flex": 1},
+				map[string]interface{}{"type": "text", "text": formatNumber(totalIncome), "size": "xxs", "color": "#27AE60", "align": "end", "flex": 2},
+			},
+		},
+		map[string]interface{}{
+			"type": "box", "layout": "horizontal",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "📉 ค่าใช้จ่าย", "size": "xxs", "color": "#E74C3C", "flex": 1},
+				map[string]interface{}{"type": "text", "text": formatNumber(totalExpense), "size": "xxs", "color": "#E74C3C", "align": "end", "flex": 2},
+			},
+		},
+	)
+
+	// Single bubble with transaction + summary
 	flex := map[string]interface{}{
 		"type": "bubble",
 		"size": "kilo",
+		"header": map[string]interface{}{
+			"type":            "box",
+			"layout":          "vertical",
+			"backgroundColor": headerColor,
+			"paddingAll":      "sm",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": emoji + " " + typeText, "color": "#FFFFFF", "weight": "bold", "size": "sm"},
+			},
+		},
 		"body": map[string]interface{}{
-			"type":     "box",
-			"layout":   "vertical",
-			"contents": contents,
+			"type":       "box",
+			"layout":     "vertical",
+			"paddingAll": "md",
+			"contents":   bodyContents,
+		},
+		"footer": map[string]interface{}{
+			"type":       "box",
+			"layout":     "vertical",
+			"paddingAll": "sm",
+			"contents": []interface{}{
+				map[string]interface{}{
+					"type": "button", "style": "secondary", "height": "sm",
+					"action": map[string]interface{}{"type": "message", "label": "🗑️ ลบรายการนี้", "text": "ลบรายการล่าสุด"},
+				},
+			},
 		},
 	}
 
@@ -614,6 +763,14 @@ func (h *LineWebhookHandler) replyBalanceFlex(ctx context.Context, userID, reply
 			},
 		},
 	)
+
+	// Add AI message at the bottom if provided
+	if msg != "" {
+		contents = append(contents,
+			map[string]interface{}{"type": "separator", "margin": "md"},
+			map[string]interface{}{"type": "text", "text": msg, "size": "sm", "color": "#666666", "wrap": true, "margin": "md"},
+		)
+	}
 
 	flex := map[string]interface{}{
 		"type": "bubble",
@@ -731,6 +888,14 @@ func (h *LineWebhookHandler) replyQueryResultsFlex(ctx context.Context, userID, 
 		contents = append(contents, summary...)
 	}
 
+	// Add AI message at the bottom if provided
+	if msg != "" {
+		contents = append(contents,
+			map[string]interface{}{"type": "separator", "margin": "md"},
+			map[string]interface{}{"type": "text", "text": msg, "size": "sm", "color": "#666666", "wrap": true, "margin": "md"},
+		)
+	}
+
 	flex := map[string]interface{}{
 		"type": "bubble",
 		"size": "kilo",
@@ -832,6 +997,77 @@ func (h *LineWebhookHandler) buildBalanceSummaryContents(ctx context.Context, us
 	return contents
 }
 
+// buildBalanceSummaryForAI returns text summary of balances for AI context
+func (h *LineWebhookHandler) buildBalanceSummaryForAI(ctx context.Context, userID string) string {
+	// Get balance by payment type
+	balances, _ := h.mongo.GetBalanceByPaymentType(ctx, userID)
+
+	// Get income/expense summary
+	summary, _ := h.mongo.GetBalanceSummary(ctx, userID)
+
+	var parts []string
+
+	// Build balance details
+	var cashTotal, bankTotal, creditTotal, grandTotal float64
+	var bankDetails, cardDetails []string
+
+	for _, b := range balances {
+		switch b.UseType {
+		case 0:
+			cashTotal += b.Balance
+		case 1:
+			creditTotal += b.Balance
+			name := b.CreditCardName
+			if name == "" {
+				name = "บัตรเครดิต"
+			}
+			cardDetails = append(cardDetails, fmt.Sprintf("%s:%.0f", name, b.Balance))
+		case 2:
+			bankTotal += b.Balance
+			name := b.BankName
+			if name == "" {
+				name = "ธนาคาร"
+			}
+			bankDetails = append(bankDetails, fmt.Sprintf("%s:%.0f", name, b.Balance))
+		}
+		grandTotal += b.Balance
+	}
+
+	// Add summary line
+	parts = append(parts, fmt.Sprintf("ยอดรวม:%.0f", grandTotal))
+
+	if cashTotal != 0 {
+		parts = append(parts, fmt.Sprintf("เงินสด:%.0f", cashTotal))
+	}
+	if bankTotal != 0 {
+		parts = append(parts, fmt.Sprintf("ธนาคารรวม:%.0f", bankTotal))
+	}
+	if len(bankDetails) > 0 {
+		parts = append(parts, strings.Join(bankDetails, ","))
+	}
+	if creditTotal != 0 {
+		parts = append(parts, fmt.Sprintf("บัตรเครดิตรวม:%.0f", creditTotal))
+	}
+	if len(cardDetails) > 0 {
+		parts = append(parts, strings.Join(cardDetails, ","))
+	}
+
+	// Add income/expense from summary
+	if summary != nil {
+		parts = append(parts, fmt.Sprintf("รายได้รวม:%.0f", summary.TotalIncome))
+		parts = append(parts, fmt.Sprintf("รายจ่ายรวม:%.0f", summary.TotalExpense))
+		if summary.TodayIncome > 0 || summary.TodayExpense > 0 {
+			parts = append(parts, fmt.Sprintf("วันนี้รับ:%.0f,จ่าย:%.0f", summary.TodayIncome, summary.TodayExpense))
+		}
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return "สรุปยอด|" + strings.Join(parts, "|")
+}
+
 // getCategoryEmoji returns emoji for category
 func getCategoryEmoji(category string) string {
 	emojis := map[string]string{
@@ -843,6 +1079,52 @@ func getCategoryEmoji(category string) string {
 		return e
 	}
 	return "💰"
+}
+
+// replyDeleteConfirmFlex sends flex message for delete confirmation
+func (h *LineWebhookHandler) replyDeleteConfirmFlex(replyToken string, balance float64) {
+	flex := map[string]interface{}{
+		"type": "bubble",
+		"size": "kilo",
+		"body": map[string]interface{}{
+			"type":       "box",
+			"layout":     "vertical",
+			"paddingAll": "md",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "🗑️ ลบรายการแล้ว", "weight": "bold", "size": "sm", "color": "#E74C3C"},
+				map[string]interface{}{"type": "separator", "margin": "sm"},
+				map[string]interface{}{"type": "text", "text": "ยอดคงเหลือ", "size": "xxs", "color": "#888888", "margin": "sm"},
+				map[string]interface{}{"type": "text", "text": formatNumber(balance) + " บาท", "size": "lg", "weight": "bold", "color": "#3498DB"},
+			},
+		},
+	}
+
+	jsonData, err := json.Marshal(flex)
+	if err != nil {
+		log.Printf("Failed to marshal delete flex: %v", err)
+		h.replyText(replyToken, fmt.Sprintf("🗑️ ลบรายการแล้ว คงเหลือ %s บาท", formatNumber(balance)))
+		return
+	}
+
+	container, err := messaging_api.UnmarshalFlexContainer(jsonData)
+	if err != nil {
+		log.Printf("Failed to unmarshal delete flex: %v", err)
+		h.replyText(replyToken, fmt.Sprintf("🗑️ ลบรายการแล้ว คงเหลือ %s บาท", formatNumber(balance)))
+		return
+	}
+
+	_, err = h.bot.ReplyMessage(&messaging_api.ReplyMessageRequest{
+		ReplyToken: replyToken,
+		Messages: []messaging_api.MessageInterface{
+			messaging_api.FlexMessage{
+				AltText:  "ลบรายการแล้ว",
+				Contents: container,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to send delete flex: %v", err)
+	}
 }
 
 // replyTextWithSuggestions sends text with quick reply suggestions
@@ -896,10 +1178,10 @@ func (h *LineWebhookHandler) replyTransferFlex(replyToken, userID string, transf
 	// Build body contents
 	bodyContents := []messaging_api.FlexComponentInterface{
 		&messaging_api.FlexText{
-			Text:   message,
-			Size:   "sm",
-			Color:  "#666666",
-			Wrap:   true,
+			Text:  message,
+			Size:  "sm",
+			Color: "#666666",
+			Wrap:  true,
 		},
 		&messaging_api.FlexSeparator{Margin: "lg"},
 		// From section
@@ -1194,6 +1476,205 @@ func getPaymentName(useType int, bankName, creditCardName string) string {
 	return "💵 เงินสด"
 }
 
+// replySlipConfirmFlex shows slip details and asks user if it's income or expense
+func (h *LineWebhookHandler) replySlipConfirmFlex(replyToken, userID string, slip *services.TransactionData) {
+	ctx := context.Background()
+
+	// Save slip data temporarily for later use
+	slipJSON, _ := json.Marshal(slip)
+	slipDataKey := fmt.Sprintf("slip_%s_%d", userID, time.Now().Unix())
+	h.mongo.SaveTempData(ctx, slipDataKey, string(slipJSON), 10*time.Minute)
+
+	// Use default values for empty fields to avoid LINE API errors
+	fromName := orDefault(slip.FromName, "-")
+	fromBank := orDefault(slip.FromBank, "-")
+	fromAccount := orDefault(slip.FromAccount, "-")
+	toName := orDefault(slip.ToName, "-")
+	toBank := orDefault(slip.ToBank, "-")
+	toAccount := orDefault(slip.ToAccount, "-")
+	slipDate := orDefault(slip.Date, "-")
+	refNo := orDefault(slip.RefNo, "-")
+
+	// Format bank info with account number
+	fromBankInfo := fromBank
+	if fromAccount != "-" {
+		fromBankInfo = fromBank + " (" + fromAccount + ")"
+	}
+	toBankInfo := toBank
+	if toAccount != "-" {
+		toBankInfo = toBank + " (" + toAccount + ")"
+	}
+
+	// Smart suggestion based on sender
+	// If sender name matches user's display name, suggest expense; otherwise suggest income
+	suggestion := "💡 น่าจะเป็นรายรับ (เงินโอนเข้า)"
+	suggestionColor := "#27AE60"
+	// Check if user is the sender (simple heuristic - can be improved with user profile matching)
+	// For now, we'll show a neutral message
+	suggestion = "💡 เลือกว่าเป็นรายรับหรือรายจ่าย"
+	suggestionColor = "#666666"
+
+	// Build Flex message showing slip details
+	flex := map[string]interface{}{
+		"type": "bubble",
+		"size": "kilo",
+		"header": map[string]interface{}{
+			"type":            "box",
+			"layout":          "vertical",
+			"backgroundColor": "#3498DB",
+			"paddingAll":      "sm",
+			"contents": []interface{}{
+				map[string]interface{}{"type": "text", "text": "📄 สลิปโอนเงิน", "color": "#FFFFFF", "weight": "bold", "size": "sm"},
+			},
+		},
+		"body": map[string]interface{}{
+			"type":       "box",
+			"layout":     "vertical",
+			"paddingAll": "md",
+			"contents": []interface{}{
+				// Amount
+				map[string]interface{}{"type": "text", "text": formatNumber(slip.Amount) + " บาท", "size": "xl", "weight": "bold", "color": "#3498DB", "align": "center"},
+				map[string]interface{}{"type": "separator", "margin": "md"},
+				// From section
+				map[string]interface{}{"type": "text", "text": "ผู้โอน", "size": "xxs", "color": "#888888", "margin": "md"},
+				map[string]interface{}{
+					"type": "box", "layout": "horizontal",
+					"contents": []interface{}{
+						map[string]interface{}{"type": "text", "text": "👤 " + fromName, "size": "xs", "color": "#333333", "flex": 1, "wrap": true},
+					},
+				},
+				map[string]interface{}{
+					"type": "box", "layout": "horizontal",
+					"contents": []interface{}{
+						map[string]interface{}{"type": "text", "text": "🏦 " + fromBankInfo, "size": "xxs", "color": "#666666", "flex": 1, "wrap": true},
+					},
+				},
+				map[string]interface{}{"type": "separator", "margin": "sm"},
+				// To section
+				map[string]interface{}{"type": "text", "text": "ผู้รับ", "size": "xxs", "color": "#888888", "margin": "sm"},
+				map[string]interface{}{
+					"type": "box", "layout": "horizontal",
+					"contents": []interface{}{
+						map[string]interface{}{"type": "text", "text": "👤 " + toName, "size": "xs", "color": "#333333", "flex": 1, "wrap": true},
+					},
+				},
+				map[string]interface{}{
+					"type": "box", "layout": "horizontal",
+					"contents": []interface{}{
+						map[string]interface{}{"type": "text", "text": "🏦 " + toBankInfo, "size": "xxs", "color": "#666666", "flex": 1, "wrap": true},
+					},
+				},
+				map[string]interface{}{"type": "separator", "margin": "sm"},
+				// Date & Ref
+				map[string]interface{}{
+					"type": "box", "layout": "horizontal", "margin": "sm",
+					"contents": []interface{}{
+						map[string]interface{}{"type": "text", "text": "📅 " + slipDate, "size": "xxs", "color": "#888888", "flex": 1},
+						map[string]interface{}{"type": "text", "text": "🔖 " + refNo, "size": "xxs", "color": "#888888", "flex": 1},
+					},
+				},
+				map[string]interface{}{"type": "separator", "margin": "md"},
+				// Suggestion
+				map[string]interface{}{"type": "text", "text": suggestion, "size": "xs", "color": suggestionColor, "align": "center", "margin": "md"},
+				// Status
+				map[string]interface{}{"type": "text", "text": "⏳ รอบันทึกบัญชี", "size": "sm", "color": "#E67E22", "align": "center", "weight": "bold", "margin": "sm"},
+			},
+		},
+		"footer": map[string]interface{}{
+			"type":       "box",
+			"layout":     "horizontal",
+			"paddingAll": "sm",
+			"contents": []interface{}{
+				map[string]interface{}{
+					"type": "button", "style": "primary", "color": "#27AE60", "height": "sm",
+					"action": map[string]interface{}{"type": "postback", "label": "💰 รายรับ", "data": fmt.Sprintf("action=slip_income&key=%s", slipDataKey)},
+				},
+				map[string]interface{}{
+					"type": "button", "style": "primary", "color": "#E74C3C", "height": "sm",
+					"action": map[string]interface{}{"type": "postback", "label": "💸 รายจ่าย", "data": fmt.Sprintf("action=slip_expense&key=%s", slipDataKey)},
+				},
+			},
+		},
+	}
+
+	jsonData, err := json.Marshal(flex)
+	if err != nil {
+		log.Printf("Failed to marshal slip flex: %v", err)
+		h.replyText(replyToken, fmt.Sprintf("📄 สลิปโอนเงิน %s บาท\nผู้โอน: %s\nผู้รับ: %s\n\nตอบ 'รายรับ' หรือ 'รายจ่าย'", formatNumber(slip.Amount), slip.FromName, slip.ToName))
+		return
+	}
+
+	container, err := messaging_api.UnmarshalFlexContainer(jsonData)
+	if err != nil {
+		log.Printf("Failed to unmarshal slip flex: %v", err)
+		h.replyText(replyToken, fmt.Sprintf("📄 สลิปโอนเงิน %s บาท\nผู้โอน: %s\nผู้รับ: %s\n\nตอบ 'รายรับ' หรือ 'รายจ่าย'", formatNumber(slip.Amount), slip.FromName, slip.ToName))
+		return
+	}
+
+	_, err = h.bot.ReplyMessage(&messaging_api.ReplyMessageRequest{
+		ReplyToken: replyToken,
+		Messages: []messaging_api.MessageInterface{
+			messaging_api.FlexMessage{
+				AltText:  fmt.Sprintf("สลิปโอนเงิน %s บาท", formatNumber(slip.Amount)),
+				Contents: container,
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to send slip flex: %v", err)
+	}
+}
+
+// handleSlipCategoryText handles user typing category text for pending slip
+func (h *LineWebhookHandler) handleSlipCategoryText(ctx context.Context, replyToken, userID, categoryText, pendingJSON string) {
+	// Parse pending slip data
+	var pending struct {
+		SlipKey string `json:"slip_key"`
+		Type    string `json:"type"` // "income" or "expense"
+	}
+	if err := json.Unmarshal([]byte(pendingJSON), &pending); err != nil {
+		log.Printf("Failed to parse pending slip data: %v", err)
+		h.replyText(replyToken, "เกิดข้อผิดพลาด กรุณาส่งรูปสลิปใหม่")
+		return
+	}
+
+	// Get slip data from temp storage
+	slipJSON, err := h.mongo.GetTempData(ctx, pending.SlipKey)
+	if err != nil {
+		log.Printf("Failed to get slip data: %v", err)
+		h.replyText(replyToken, "ข้อมูลสลิปหมดอายุ กรุณาส่งรูปใหม่")
+		return
+	}
+
+	// Parse slip data
+	var slip services.TransactionData
+	if err := json.Unmarshal([]byte(slipJSON), &slip); err != nil {
+		log.Printf("Failed to parse slip data: %v", err)
+		h.replyText(replyToken, "เกิดข้อผิดพลาด กรุณาส่งรูปใหม่")
+		return
+	}
+
+	// Set type and category based on user choice
+	slip.Type = pending.Type
+	slip.Category = categoryText
+	if pending.Type == "income" {
+		slip.Description = fmt.Sprintf("รับโอนจาก %s (%s) - %s", slip.FromName, slip.FromBank, categoryText)
+		slip.BankName = slip.ToBank
+	} else {
+		slip.Description = fmt.Sprintf("โอนให้ %s (%s) - %s", slip.ToName, slip.ToBank, categoryText)
+		slip.BankName = slip.FromBank
+	}
+	slip.UseType = 2 // Bank transfer
+
+	// Delete temp data
+	pendingKey := fmt.Sprintf("slip_pending_%s", userID)
+	h.mongo.DeleteTempData(ctx, pendingKey)
+	h.mongo.DeleteTempData(ctx, pending.SlipKey)
+
+	// Save transaction and reply with flex
+	h.replyTransactionFlex(replyToken, userID, &slip)
+}
+
 // replyTransactionFlex sends transaction flex message using reply (free, no quota)
 func (h *LineWebhookHandler) replyTransactionFlex(replyToken, userID string, tx *services.TransactionData) {
 	ctx := context.Background()
@@ -1220,7 +1701,7 @@ func (h *LineWebhookHandler) replyTransactionFlex(replyToken, userID string, tx 
 		bubbles = append(bubbles, balanceBubble)
 	}
 
-	// Create flex message with delete option
+	// Create flex message with edit/delete options
 	flexMessage := messaging_api.FlexMessage{
 		AltText: fmt.Sprintf("บันทึกแล้ว %s บาท", formatNumber(tx.Amount)),
 		Contents: &messaging_api.FlexCarousel{
@@ -1228,6 +1709,12 @@ func (h *LineWebhookHandler) replyTransactionFlex(replyToken, userID string, tx 
 		},
 		QuickReply: &messaging_api.QuickReply{
 			Items: []messaging_api.QuickReplyItem{
+				{
+					Action: &messaging_api.PostbackAction{
+						Label: "✏️ แก้ไข",
+						Data:  fmt.Sprintf("action=edit_request&txid=%s", txID),
+					},
+				},
 				{
 					Action: &messaging_api.PostbackAction{
 						Label: "🗑️ ลบรายการนี้",
@@ -1348,6 +1835,12 @@ func (h *LineWebhookHandler) buildTransactionBubble(tx *services.TransactionData
 			PaddingAll:      "15px",
 			Contents: []messaging_api.FlexComponentInterface{
 				&messaging_api.FlexText{
+					Text:   "✅ บันทึกบัญชีแล้ว",
+					Weight: messaging_api.FlexTextWEIGHT_BOLD,
+					Size:   "sm",
+					Color:  "#FFFFFF",
+				},
+				&messaging_api.FlexText{
 					Text:   typeText,
 					Weight: messaging_api.FlexTextWEIGHT_BOLD,
 					Size:   "lg",
@@ -1373,9 +1866,9 @@ func (h *LineWebhookHandler) buildTransactionBubble(tx *services.TransactionData
 					Margin: "sm",
 				},
 				&messaging_api.FlexText{
-					Text:  fmt.Sprintf("📅 %s | 🏷️ %s", tx.Date, tx.Category),
-					Size:  "xs",
-					Color: "#888888",
+					Text:   fmt.Sprintf("📅 %s | 🏷️ %s", tx.Date, tx.Category),
+					Size:   "xs",
+					Color:  "#888888",
 					Margin: "md",
 				},
 			},
@@ -1409,9 +1902,9 @@ func (h *LineWebhookHandler) buildBalanceBubble(balance *services.BalanceSummary
 			PaddingAll: "15px",
 			Contents: []messaging_api.FlexComponentInterface{
 				&messaging_api.FlexText{
-					Text:   "ยอดคงเหลือ",
-					Size:   "sm",
-					Color:  "#888888",
+					Text:  "ยอดคงเหลือ",
+					Size:  "sm",
+					Color: "#888888",
 				},
 				&messaging_api.FlexText{
 					Text:   fmt.Sprintf("%s", formatNumber(balance.Balance)),
@@ -1715,6 +2208,12 @@ func (h *LineWebhookHandler) replyUpdatedTransaction(replyToken, userID string, 
 			Items: []messaging_api.QuickReplyItem{
 				{
 					Action: &messaging_api.PostbackAction{
+						Label: "✏️ แก้ไขอีก",
+						Data:  fmt.Sprintf("action=edit_request&txid=%s", txID),
+					},
+				},
+				{
+					Action: &messaging_api.PostbackAction{
 						Label: "🗑️ ลบรายการนี้",
 						Data:  "action=delete&txid=" + txID,
 					},
@@ -1769,14 +2268,15 @@ func (h *LineWebhookHandler) handlePostback(ctx context.Context, event webhook.P
 			return
 		}
 
-		// Get updated balance
-		balance, _ := h.mongo.GetBalanceSummary(ctx, userID)
-		balanceText := ""
-		if balance != nil {
-			balanceText = fmt.Sprintf("\n💰 ยอดคงเหลือ: %s", formatNumber(balance.Balance))
+		// Get updated balance from payment types (accurate)
+		balances, _ := h.mongo.GetBalanceByPaymentType(ctx, userID)
+		var grandTotal float64
+		for _, b := range balances {
+			grandTotal += b.Balance
 		}
 
-		h.replyText(replyToken, "🗑️ ลบรายการเรียบร้อยแล้ว"+balanceText)
+		// Reply with Flex showing delete confirmation and balance
+		h.replyDeleteConfirmFlex(replyToken, grandTotal)
 
 	case "delete_all":
 		txIDs := params["txids"]
@@ -1820,6 +2320,127 @@ func (h *LineWebhookHandler) handlePostback(ctx context.Context, event webhook.P
 		// Get updated balance
 		balanceText := h.getBalanceText(ctx, userID)
 		h.replyText(replyToken, fmt.Sprintf("🗑️ ยกเลิกการโอนเรียบร้อยแล้ว\n\n%s", balanceText))
+
+	case "edit_request":
+		// Handle edit request - guide user how to edit
+		// We don't need txID here as the user will type the edit command naturally
+		// But keeping it in data is good for future context if we implement stateful conversation
+		h.replyText(replyToken, "✏️ หากต้องการแก้ไข ให้พิมพ์บอกได้เลยค่ะ\nเช่น \"แก้เป็นค่าอาหาร 500 บาท\" หรือ \"เปลี่ยนเป็นบัตรเครดิต\"")
+
+	case "slip_income", "slip_expense":
+		// Handle slip type selection - ask for category
+		key := params["key"]
+		if key == "" {
+			h.replyText(replyToken, "ข้อมูลสลิปหมดอายุ กรุณาส่งรูปใหม่")
+			return
+		}
+
+		// Verify slip data exists
+		_, err := h.mongo.GetTempData(ctx, key)
+		if err != nil {
+			log.Printf("Failed to get slip data: %v", err)
+			h.replyText(replyToken, "ข้อมูลสลิปหมดอายุ กรุณาส่งรูปใหม่")
+			return
+		}
+
+		// Determine type
+		txType := "income"
+		typeText := "รายรับ"
+		if action == "slip_expense" {
+			txType = "expense"
+			typeText = "รายจ่าย"
+		}
+
+		// Save pending state so user can type category instead of using Quick Reply
+		pendingKey := fmt.Sprintf("slip_pending_%s", userID)
+		pendingData := fmt.Sprintf(`{"slip_key":"%s","type":"%s"}`, key, txType)
+		h.mongo.SaveTempData(ctx, pendingKey, pendingData, 10*time.Minute)
+
+		// Build category quick replies based on type
+		var quickItems []messaging_api.QuickReplyItem
+		if action == "slip_income" {
+			categories := []string{"เงินเดือน", "โบนัส", "รายได้เสริม", "เงินคืน", "ของขวัญ", "อื่นๆ"}
+			for _, cat := range categories {
+				quickItems = append(quickItems, messaging_api.QuickReplyItem{
+					Action: &messaging_api.PostbackAction{
+						Label: cat,
+						Data:  fmt.Sprintf("action=slip_save&key=%s&type=income&category=%s", key, cat),
+					},
+				})
+			}
+		} else {
+			categories := []string{"โอนเงิน", "ค่าสินค้า", "ค่าบริการ", "ค่าอาหาร", "ค่าเดินทาง", "อื่นๆ"}
+			for _, cat := range categories {
+				quickItems = append(quickItems, messaging_api.QuickReplyItem{
+					Action: &messaging_api.PostbackAction{
+						Label: cat,
+						Data:  fmt.Sprintf("action=slip_save&key=%s&type=expense&category=%s", key, cat),
+					},
+				})
+			}
+		}
+
+		_, err = h.bot.ReplyMessage(&messaging_api.ReplyMessageRequest{
+			ReplyToken: replyToken,
+			Messages: []messaging_api.MessageInterface{
+				messaging_api.TextMessage{
+					Text: fmt.Sprintf("✅ เลือก %s แล้ว\n\nเป็นค่าอะไรคะ? (เลือกหรือพิมพ์ได้เลย)", typeText),
+					QuickReply: &messaging_api.QuickReply{
+						Items: quickItems,
+					},
+				},
+			},
+		})
+		if err != nil {
+			log.Printf("Failed to send category selection: %v", err)
+		}
+
+	case "slip_save":
+		// Final save of slip transaction
+		key := params["key"]
+		txType := params["type"]
+		category := params["category"]
+
+		if key == "" {
+			h.replyText(replyToken, "ข้อมูลสลิปหมดอายุ กรุณาส่งรูปใหม่")
+			return
+		}
+
+		// Get slip data from temp storage
+		slipJSON, err := h.mongo.GetTempData(ctx, key)
+		if err != nil {
+			log.Printf("Failed to get slip data: %v", err)
+			h.replyText(replyToken, "ข้อมูลสลิปหมดอายุ กรุณาส่งรูปใหม่")
+			return
+		}
+
+		// Parse slip data
+		var slip services.TransactionData
+		if err := json.Unmarshal([]byte(slipJSON), &slip); err != nil {
+			log.Printf("Failed to parse slip data: %v", err)
+			h.replyText(replyToken, "เกิดข้อผิดพลาด กรุณาส่งรูปใหม่")
+			return
+		}
+
+		// Set type and category based on user choice
+		slip.Type = txType
+		slip.Category = category
+		if txType == "income" {
+			slip.Description = fmt.Sprintf("รับโอนจาก %s (%s) - %s", slip.FromName, slip.FromBank, category)
+			slip.BankName = slip.ToBank
+		} else {
+			slip.Description = fmt.Sprintf("โอนให้ %s (%s) - %s", slip.ToName, slip.ToBank, category)
+			slip.BankName = slip.FromBank
+		}
+		slip.UseType = 2 // Bank transfer
+
+		// Delete temp data (slip key and pending state)
+		h.mongo.DeleteTempData(ctx, key)
+		pendingKey := fmt.Sprintf("slip_pending_%s", userID)
+		h.mongo.DeleteTempData(ctx, pendingKey)
+
+		// Save transaction and reply with flex
+		h.replyTransactionFlex(replyToken, userID, &slip)
 
 	default:
 		log.Printf("Unknown postback action: %s", action)
@@ -2244,6 +2865,14 @@ func truncateLabel(s string, maxLen int) string {
 	return string(runes[:maxLen-2]) + ".."
 }
 
+// orDefault returns the string if not empty, otherwise returns the default value
+func orDefault(s, defaultVal string) string {
+	if strings.TrimSpace(s) == "" {
+		return defaultVal
+	}
+	return s
+}
+
 // replyAnalysisFlex displays AI analysis with beautiful Flex Message
 func (h *LineWebhookHandler) replyAnalysisFlex(replyToken, userID string, analysis *services.AnalysisData, message string) {
 	// Build body contents
@@ -2379,9 +3008,9 @@ func (h *LineWebhookHandler) replyAnalysisFlex(replyToken, userID string, analys
 				PaddingAll:      "20px",
 				Contents: []messaging_api.FlexComponentInterface{
 					&messaging_api.FlexText{
-						Text:   "🤖 สติสตางค์ AI",
-						Size:   "sm",
-						Color:  "#FFFFFF",
+						Text:  "🤖 สติสตางค์ AI",
+						Size:  "sm",
+						Color: "#FFFFFF",
 					},
 					&messaging_api.FlexText{
 						Text:   title,
@@ -2746,18 +3375,18 @@ func (h *LineWebhookHandler) replyChartFlex(replyToken, userID string) {
 						Flex:  4,
 					},
 					&messaging_api.FlexText{
-						Text:   fmt.Sprintf("%s (%.0f%%)", formatNumber(item.Amount), item.Percentage),
-						Size:   "xs",
-						Color:  "#888888",
-						Align:  messaging_api.FlexTextALIGN_END,
-						Flex:   3,
+						Text:  fmt.Sprintf("%s (%.0f%%)", formatNumber(item.Amount), item.Percentage),
+						Size:  "xs",
+						Color: "#888888",
+						Align: messaging_api.FlexTextALIGN_END,
+						Flex:  3,
 					},
 				},
 			},
 			// Bar visualization
 			&messaging_api.FlexBox{
-				Layout:          messaging_api.FlexBoxLAYOUT_HORIZONTAL,
-				Margin:          "xs",
+				Layout: messaging_api.FlexBoxLAYOUT_HORIZONTAL,
+				Margin: "xs",
 				Contents: []messaging_api.FlexComponentInterface{
 					&messaging_api.FlexBox{
 						Layout:          messaging_api.FlexBoxLAYOUT_VERTICAL,
@@ -2873,9 +3502,9 @@ func (h *LineWebhookHandler) replySearchResults(replyToken, userID string, resul
 	// Summary section
 	bodyContents = append(bodyContents,
 		&messaging_api.FlexText{
-			Text:   fmt.Sprintf("พบ %d รายการ", len(results)),
-			Size:   "sm",
-			Color:  "#888888",
+			Text:  fmt.Sprintf("พบ %d รายการ", len(results)),
+			Size:  "sm",
+			Color: "#888888",
 		},
 	)
 

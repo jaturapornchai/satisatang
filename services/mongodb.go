@@ -21,9 +21,9 @@ type DailyRecord struct {
 	Time           string             `bson:"time" json:"time"`
 	Incomes        []Transaction      `bson:"incomes" json:"incomes"`
 	Expenses       []Transaction      `bson:"expenses" json:"expenses"`
-	UseType        int                `bson:"usetype" json:"usetype"`                 // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
-	BankName       string             `bson:"bankname" json:"bankname"`               // ชื่อธนาคาร
-	CreditCardName string             `bson:"creditcardname" json:"creditcardname"`   // ชื่อบัตรเครดิต
+	UseType        int                `bson:"usetype" json:"usetype"`               // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
+	BankName       string             `bson:"bankname" json:"bankname"`             // ชื่อธนาคาร
+	CreditCardName string             `bson:"creditcardname" json:"creditcardname"` // ชื่อบัตรเครดิต
 	TotalIncome    float64            `bson:"totalIncome" json:"totalIncome"`
 	TotalExpense   float64            `bson:"totalExpense" json:"totalExpense"`
 	CreatedAt      time.Time          `bson:"createdAt" json:"createdAt"`
@@ -32,7 +32,7 @@ type DailyRecord struct {
 
 // ChatMessage represents a chat history message
 type ChatMessage struct {
-	Role      string    `bson:"role" json:"role"`           // "user" or "assistant"
+	Role      string    `bson:"role" json:"role"` // "user" or "assistant"
 	Content   string    `bson:"content" json:"content"`
 	Timestamp time.Time `bson:"timestamp" json:"timestamp"`
 }
@@ -54,26 +54,11 @@ type Transaction struct {
 	Category       string             `bson:"category" json:"category"`
 	Description    string             `bson:"description" json:"description"`
 	ImageBase64    string             `bson:"imagebase64" json:"imagebase64"`
-	UseType        int                `bson:"usetype" json:"usetype"`               // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
+	UseType        int                `bson:"usetype" json:"usetype"` // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
 	BankName       string             `bson:"bankname" json:"bankname"`
 	CreditCardName string             `bson:"creditcardname" json:"creditcardname"`
-	TransferID     string             `bson:"transfer_id" json:"transfer_id"`       // link to transfers collection
+	TransferID     string             `bson:"transfer_id" json:"transfer_id"` // link to transfers collection
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
-}
-
-// TransactionEmbedding represents a transaction with vector embedding for semantic search
-type TransactionEmbedding struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	LineID      string             `bson:"lineid" json:"lineid"`
-	Date        string             `bson:"date" json:"date"`
-	Text        string             `bson:"text" json:"text"`               // Combined text for embedding
-	Embedding   []float32          `bson:"embedding" json:"embedding"`     // Vector embedding (768 or 1536 dims)
-	TxID        primitive.ObjectID `bson:"tx_id" json:"tx_id"`             // Reference to original transaction
-	Type        int                `bson:"type" json:"type"`
-	Amount      float64            `bson:"amount" json:"amount"`
-	Category    string             `bson:"category" json:"category"`
-	Description string             `bson:"description" json:"description"`
-	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
 }
 
 // TransferEntryDB represents a single transfer source or destination in DB
@@ -103,29 +88,29 @@ type Budget struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	LineID    string             `bson:"lineid" json:"lineid"`
 	Category  string             `bson:"category" json:"category"`
-	Amount    float64            `bson:"amount" json:"amount"`       // งบประมาณต่อเดือน
+	Amount    float64            `bson:"amount" json:"amount"` // งบประมาณต่อเดือน
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }
 
 // BudgetStatus represents budget vs actual spending
 type BudgetStatus struct {
-	Category   string  `json:"category"`
-	Budget     float64 `json:"budget"`
-	Spent      float64 `json:"spent"`
-	Remaining  float64 `json:"remaining"`
-	Percentage float64 `json:"percentage"` // spent/budget * 100
-	IsOverBudget bool  `json:"is_over_budget"`
+	Category     string  `json:"category"`
+	Budget       float64 `json:"budget"`
+	Spent        float64 `json:"spent"`
+	Remaining    float64 `json:"remaining"`
+	Percentage   float64 `json:"percentage"` // spent/budget * 100
+	IsOverBudget bool    `json:"is_over_budget"`
 }
 
 type MongoDBService struct {
-	client               *mongo.Client
-	database             *mongo.Database
-	collection           *mongo.Collection
-	chatCollection       *mongo.Collection
-	transferCollection   *mongo.Collection
-	budgetCollection     *mongo.Collection
-	embeddingCollection  *mongo.Collection
+	client             *mongo.Client
+	database           *mongo.Database
+	collection         *mongo.Collection
+	chatCollection     *mongo.Collection
+	transferCollection *mongo.Collection
+	budgetCollection   *mongo.Collection
+	tempCollection     *mongo.Collection
 }
 
 func NewMongoDBService(uri, dbName string) (*MongoDBService, error) {
@@ -149,17 +134,16 @@ func NewMongoDBService(uri, dbName string) (*MongoDBService, error) {
 	chatCollection := database.Collection("chat_history")
 	transferCollection := database.Collection("transfers")
 	budgetCollection := database.Collection("budgets")
-
-	embeddingCollection := database.Collection("embeddings")
+	tempCollection := database.Collection("temp_data")
 
 	return &MongoDBService{
-		client:              client,
-		database:            database,
-		collection:          collection,
-		chatCollection:      chatCollection,
-		transferCollection:  transferCollection,
-		budgetCollection:    budgetCollection,
-		embeddingCollection: embeddingCollection,
+		client:             client,
+		database:           database,
+		collection:         collection,
+		chatCollection:     chatCollection,
+		transferCollection: transferCollection,
+		budgetCollection:   budgetCollection,
+		tempCollection:     tempCollection,
 	}, nil
 }
 
@@ -216,12 +200,11 @@ func (s *MongoDBService) SaveTransaction(ctx context.Context, lineID string, tx 
 			record.TotalExpense = tx.Amount
 		}
 
-		result, err := s.collection.InsertOne(ctx, record)
+		_, err := s.collection.InsertOne(ctx, record)
 		if err != nil {
 			return "", fmt.Errorf("failed to insert daily record: %w", err)
 		}
 		return newTx.ID.Hex(), nil
-		_ = result
 	} else if err != nil {
 		return "", fmt.Errorf("failed to find daily record: %w", err)
 	}
@@ -324,12 +307,12 @@ func (s *MongoDBService) recalculateTotals(ctx context.Context, lineID, date str
 
 // BalanceSummary represents the balance information
 type BalanceSummary struct {
-	TotalIncome    float64 `json:"totalIncome"`
-	TotalExpense   float64 `json:"totalExpense"`
-	Balance        float64 `json:"balance"`
-	TodayIncome    float64 `json:"todayIncome"`
-	TodayExpense   float64 `json:"todayExpense"`
-	TodayBalance   float64 `json:"todayBalance"`
+	TotalIncome  float64 `json:"totalIncome"`
+	TotalExpense float64 `json:"totalExpense"`
+	Balance      float64 `json:"balance"`
+	TodayIncome  float64 `json:"todayIncome"`
+	TodayExpense float64 `json:"todayExpense"`
+	TodayBalance float64 `json:"todayBalance"`
 }
 
 // GetBalanceSummary returns the balance summary for a user
@@ -1508,193 +1491,51 @@ func (s *MongoDBService) GetBudgetSummaryText(ctx context.Context, lineID string
 	return sb.String()
 }
 
+// SaveTempData saves temporary data with TTL
+func (s *MongoDBService) SaveTempData(ctx context.Context, key, data string, ttl time.Duration) error {
+	_, err := s.tempCollection.UpdateOne(ctx,
+		bson.M{"key": key},
+		bson.M{
+			"$set": bson.M{
+				"key":        key,
+				"data":       data,
+				"expires_at": time.Now().Add(ttl),
+			},
+		},
+		options.Update().SetUpsert(true),
+	)
+	return err
+}
+
+// GetTempData retrieves temporary data by key
+func (s *MongoDBService) GetTempData(ctx context.Context, key string) (string, error) {
+	var result struct {
+		Data      string    `bson:"data"`
+		ExpiresAt time.Time `bson:"expires_at"`
+	}
+
+	err := s.tempCollection.FindOne(ctx, bson.M{"key": key}).Decode(&result)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if expired
+	if time.Now().After(result.ExpiresAt) {
+		s.tempCollection.DeleteOne(ctx, bson.M{"key": key})
+		return "", fmt.Errorf("data expired")
+	}
+
+	return result.Data, nil
+}
+
+// DeleteTempData removes temporary data
+func (s *MongoDBService) DeleteTempData(ctx context.Context, key string) error {
+	_, err := s.tempCollection.DeleteOne(ctx, bson.M{"key": key})
+	return err
+}
+
 func (s *MongoDBService) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.client.Disconnect(ctx)
-}
-
-// ===== Vector Search Functions =====
-
-// SaveTransactionEmbedding saves a transaction embedding for vector search
-func (s *MongoDBService) SaveTransactionEmbedding(ctx context.Context, lineID string, tx *Transaction, date string, embedding []float32) (string, error) {
-	// Create text representation for the transaction
-	typeStr := "รายจ่าย"
-	if tx.Type == 1 {
-		typeStr = "รายรับ"
-	}
-	text := fmt.Sprintf("%s %s %.0f บาท หมวด%s", typeStr, tx.Description, tx.Amount, tx.Category)
-
-	embDoc := TransactionEmbedding{
-		ID:          primitive.NewObjectID(),
-		LineID:      lineID,
-		Date:        date,
-		Text:        text,
-		Embedding:   embedding,
-		TxID:        tx.ID,
-		Type:        tx.Type,
-		Amount:      tx.Amount,
-		Category:    tx.Category,
-		Description: tx.Description,
-		CreatedAt:   time.Now(),
-	}
-
-	_, err := s.embeddingCollection.InsertOne(ctx, embDoc)
-	if err != nil {
-		return "", fmt.Errorf("failed to save embedding: %w", err)
-	}
-
-	return embDoc.ID.Hex(), nil
-}
-
-// VectorSearchResult represents a vector search result with similarity score
-type VectorSearchResult struct {
-	Embedding TransactionEmbedding `json:"embedding"`
-	Score     float64              `json:"score"`
-}
-
-// VectorSearch performs semantic search using MongoDB Atlas Vector Search
-// Requires a vector search index named "embedding_index" on the embeddings collection
-// Index definition:
-//
-//	{
-//	  "fields": [{
-//	    "type": "vector",
-//	    "path": "embedding",
-//	    "numDimensions": 768,
-//	    "similarity": "cosine"
-//	  }]
-//	}
-func (s *MongoDBService) VectorSearch(ctx context.Context, lineID string, queryVector []float32, limit int) ([]VectorSearchResult, error) {
-	if limit <= 0 {
-		limit = 10
-	}
-
-	// MongoDB Atlas $vectorSearch aggregation pipeline
-	pipeline := mongo.Pipeline{
-		// Stage 1: Vector search
-		{{Key: "$vectorSearch", Value: bson.D{
-			{Key: "index", Value: "embedding_index"},
-			{Key: "path", Value: "embedding"},
-			{Key: "queryVector", Value: queryVector},
-			{Key: "numCandidates", Value: limit * 10}, // Search more candidates for better results
-			{Key: "limit", Value: limit},
-			{Key: "filter", Value: bson.D{
-				{Key: "lineid", Value: lineID},
-			}},
-		}}},
-		// Stage 2: Add score field
-		{{Key: "$addFields", Value: bson.D{
-			{Key: "score", Value: bson.D{{Key: "$meta", Value: "vectorSearchScore"}}},
-		}}},
-	}
-
-	cursor, err := s.embeddingCollection.Aggregate(ctx, pipeline)
-	if err != nil {
-		return nil, fmt.Errorf("vector search failed: %w", err)
-	}
-	defer cursor.Close(ctx)
-
-	var results []VectorSearchResult
-	for cursor.Next(ctx) {
-		var doc struct {
-			TransactionEmbedding `bson:",inline"`
-			Score                float64 `bson:"score"`
-		}
-		if err := cursor.Decode(&doc); err != nil {
-			log.Printf("Failed to decode vector search result: %v", err)
-			continue
-		}
-		results = append(results, VectorSearchResult{
-			Embedding: doc.TransactionEmbedding,
-			Score:     doc.Score,
-		})
-	}
-
-	return results, nil
-}
-
-// SemanticSearch combines embedding generation and vector search
-// Takes a natural language query and returns similar transactions
-func (s *MongoDBService) SemanticSearch(ctx context.Context, lineID string, query string, queryVector []float32, limit int) ([]VectorSearchResult, error) {
-	return s.VectorSearch(ctx, lineID, queryVector, limit)
-}
-
-// GetVectorSearchResultText formats vector search results as text for AI context
-func (s *MongoDBService) GetVectorSearchResultText(results []VectorSearchResult) string {
-	if len(results) == 0 {
-		return "ไม่พบรายการที่คล้ายกัน"
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("พบ %d รายการที่เกี่ยวข้อง:\n", len(results)))
-
-	for i, r := range results {
-		if i >= 10 {
-			sb.WriteString(fmt.Sprintf("...และอีก %d รายการ\n", len(results)-10))
-			break
-		}
-
-		typeStr := "รายจ่าย"
-		if r.Embedding.Type == 1 {
-			typeStr = "รายรับ"
-		}
-
-		sb.WriteString(fmt.Sprintf("- %s: %s %.0f บาท (%s) วันที่ %s (ความเกี่ยวข้อง: %.0f%%)\n",
-			typeStr,
-			r.Embedding.Description,
-			r.Embedding.Amount,
-			r.Embedding.Category,
-			r.Embedding.Date,
-			r.Score*100,
-		))
-	}
-
-	return sb.String()
-}
-
-// DeleteTransactionEmbedding removes embedding for a transaction
-func (s *MongoDBService) DeleteTransactionEmbedding(ctx context.Context, txID string) error {
-	objectID, err := primitive.ObjectIDFromHex(txID)
-	if err != nil {
-		return fmt.Errorf("invalid transaction ID: %w", err)
-	}
-
-	_, err = s.embeddingCollection.DeleteOne(ctx, bson.M{"tx_id": objectID})
-	return err
-}
-
-// IsVectorSearchAvailable checks if vector search is available
-// Returns true if the embedding collection exists and has a vector search index
-func (s *MongoDBService) IsVectorSearchAvailable(ctx context.Context) bool {
-	// Try a simple aggregation to check if $vectorSearch is available
-	// This will fail if the index doesn't exist
-	pipeline := mongo.Pipeline{
-		{{Key: "$vectorSearch", Value: bson.D{
-			{Key: "index", Value: "embedding_index"},
-			{Key: "path", Value: "embedding"},
-			{Key: "queryVector", Value: make([]float32, 768)}, // Zero vector
-			{Key: "numCandidates", Value: 1},
-			{Key: "limit", Value: 1},
-		}}},
-	}
-
-	cursor, err := s.embeddingCollection.Aggregate(ctx, pipeline)
-	if err != nil {
-		// Index doesn't exist or not ready
-		return false
-	}
-	cursor.Close(ctx)
-	return true
-}
-
-// GetEmbeddingCount returns the number of embeddings for a user
-func (s *MongoDBService) GetEmbeddingCount(ctx context.Context, lineID string) (int64, error) {
-	return s.embeddingCollection.CountDocuments(ctx, bson.M{"lineid": lineID})
-}
-
-// DeleteAllUserEmbeddings removes all embeddings for a user
-func (s *MongoDBService) DeleteAllUserEmbeddings(ctx context.Context, lineID string) error {
-	_, err := s.embeddingCollection.DeleteMany(ctx, bson.M{"lineid": lineID})
-	return err
 }

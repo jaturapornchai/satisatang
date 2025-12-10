@@ -21,6 +21,7 @@ func getCurrentDate() string {
 
 // TransactionData represents extracted receipt data
 type TransactionData struct {
+	ImageType      string            `json:"image_type"` // "receipt" or "slip"
 	Date           string            `json:"date"`
 	Merchant       string            `json:"merchant"`
 	Amount         float64           `json:"amount"`
@@ -28,23 +29,34 @@ type TransactionData struct {
 	Type           string            `json:"type"`
 	Description    string            `json:"description"`
 	Items          []TransactionItem `json:"items"`
-	UseType        int               `json:"usetype"`        // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
+	UseType        int               `json:"usetype"` // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
 	BankName       string            `json:"bankname"`
 	CreditCardName string            `json:"creditcardname"`
+	// Slip-specific fields
+	FromName    string `json:"from_name"`    // ผู้โอน
+	FromBank    string `json:"from_bank"`    // ธนาคารผู้โอน
+	FromAccount string `json:"from_account"` // เลขบัญชีผู้โอน
+	ToName      string `json:"to_name"`      // ผู้รับ
+	ToBank      string `json:"to_bank"`      // ธนาคารผู้รับ
+	ToAccount   string `json:"to_account"`   // เลขบัญชีผู้รับ
+	RefNo       string `json:"ref_no"`       // เลขอ้างอิง
+	// Image storage fields
+	ImageBase64   string `json:"image_base64,omitempty"`   // รูปภาพ base64
+	ImageMimeType string `json:"image_mime_type,omitempty"` // mime type ของรูป
 }
 
 // TransferEntry represents a single transfer source or destination
 type TransferEntry struct {
 	Amount         float64 `json:"amount"`
-	UseType        int     `json:"usetype"`        // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
+	UseType        int     `json:"usetype"` // 0=เงินสด, 1=บัตรเครดิต, 2=ธนาคาร
 	BankName       string  `json:"bankname"`
 	CreditCardName string  `json:"creditcardname"`
 }
 
 // TransferData represents transfers between accounts (many-to-many)
 type TransferData struct {
-	From        []TransferEntry `json:"from"`        // ต้นทาง (หลายบัญชีได้)
-	To          []TransferEntry `json:"to"`          // ปลายทาง (หลายบัญชีได้)
+	From        []TransferEntry `json:"from"` // ต้นทาง (หลายบัญชีได้)
+	To          []TransferEntry `json:"to"`   // ปลายทาง (หลายบัญชีได้)
 	Description string          `json:"description"`
 }
 
@@ -122,8 +134,8 @@ type AIChat interface {
 
 // AIService handles AI chat via external API
 type AIService struct {
-	httpClient    *http.Client
-	systemPrompt  string
+	httpClient     *http.Client
+	systemPrompt   string
 	examplesPrompt string
 	receiptPrompt  string
 }
@@ -425,86 +437,4 @@ func cleanJSONResponse(s string) string {
 // Close closes the AI service (no-op for HTTP client)
 func (s *AIService) Close() error {
 	return nil
-}
-
-// EmbeddingRequest represents the request to embedding API
-type EmbeddingRequest struct {
-	Text string `json:"text"`
-}
-
-// EmbeddingResponse represents the response from embedding API
-type EmbeddingResponse struct {
-	Embedding []float32 `json:"embedding"`
-	Error     string    `json:"error,omitempty"`
-}
-
-// EmbeddingAPIEndpoint is the URL for the embedding API
-const EmbeddingAPIEndpoint = "https://aiapi-m34uubkg2-jaturapornchais-projects.vercel.app/api/embed"
-
-// ErrEmbeddingUnavailable indicates the embedding API is not available
-var ErrEmbeddingUnavailable = fmt.Errorf("embedding API unavailable")
-
-// GenerateEmbedding generates vector embedding for text using AI API
-// Returns a 768-dimensional vector for text-embedding-004 model
-// Returns ErrEmbeddingUnavailable if the API is not available
-func (s *AIService) GenerateEmbedding(ctx context.Context, text string) ([]float32, error) {
-	if text == "" {
-		return nil, fmt.Errorf("empty text for embedding")
-	}
-
-	reqBody := EmbeddingRequest{Text: text}
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", EmbeddingAPIEndpoint, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		log.Printf("Embedding API call failed: %v", err)
-		return nil, ErrEmbeddingUnavailable
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Check for 404 or other server errors indicating API not available
-	if resp.StatusCode == http.StatusNotFound {
-		log.Printf("Embedding API not found (404)")
-		return nil, ErrEmbeddingUnavailable
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embedding API error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var embResp EmbeddingResponse
-	if err := json.Unmarshal(body, &embResp); err != nil {
-		return nil, fmt.Errorf("failed to parse embedding response: %w", err)
-	}
-
-	if embResp.Error != "" {
-		return nil, fmt.Errorf("embedding API error: %s", embResp.Error)
-	}
-
-	if len(embResp.Embedding) == 0 {
-		return nil, fmt.Errorf("empty embedding from API")
-	}
-
-	return embResp.Embedding, nil
-}
-
-// IsEmbeddingAvailable checks if the embedding API is available
-func (s *AIService) IsEmbeddingAvailable(ctx context.Context) bool {
-	// Try to generate a test embedding
-	_, err := s.GenerateEmbedding(ctx, "test")
-	return err == nil
 }
